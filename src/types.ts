@@ -29,6 +29,20 @@ export interface TerminalContext {
 export type QuickActionType = 'approve' | 'deny' | 'respond' | 'cancel';
 
 /**
+ * Todo item status
+ */
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+/**
+ * A todo item from Claude's TodoWrite tool
+ */
+export interface TodoItem {
+  content: string;      // Task description (imperative form)
+  activeForm: string;   // Present continuous form (e.g., "Writing tests")
+  status: TodoStatus;
+}
+
+/**
  * A Claude Code session running in a terminal
  */
 export interface ClaudeSession {
@@ -43,6 +57,9 @@ export interface ClaudeSession {
   terminal: TerminalContext;
   // Subagent hierarchy
   parentId?: string;        // If this is a subagent, the parent session ID
+  // Task tracking from TodoWrite
+  todos?: TodoItem[];       // Current todo list
+  lastStatus?: string;      // Parsed status from last Claude message
 }
 
 /**

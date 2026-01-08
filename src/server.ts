@@ -1,10 +1,10 @@
 import { sessionStore } from './store.js';
-import type { SessionStatus, TerminalType, QuickActionType } from './types.js';
+import type { SessionStatus, TerminalType, QuickActionType, TodoItem } from './types.js';
 
 const DEFAULT_PORT = 7432; // "SSMGR" on phone keypad :)
 
 interface HookEvent {
-  event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop';
+  event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop' | 'todo_update';
   session_id: string;
   cwd?: string;
   message?: string;
@@ -20,6 +20,8 @@ interface HookEvent {
   parent_session_id?: string;  // For subagents: the parent session ID
   subagent_type?: string;      // Type of subagent (e.g., "Explore", "Plan")
   description?: string;        // Task description for subagents
+  // Todo tracking
+  todos?: TodoItem[];          // Current todo list from TodoWrite
 }
 
 interface ActionRequest {
@@ -155,6 +157,19 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
         alerting: false,
       });
       return { success: true, message: `Subagent ${session_id} completed` };
+    }
+
+    case 'todo_update': {
+      // Update session with current todo list
+      if (event.todos) {
+        // Find the in_progress task to use as currentTask
+        const inProgress = event.todos.find(t => t.status === 'in_progress');
+        sessionStore.upsert(session_id, {
+          todos: event.todos,
+          currentTask: inProgress?.activeForm,
+        });
+      }
+      return { success: true, message: `Session ${session_id} todos updated` };
     }
 
     default:

@@ -49,6 +49,25 @@ const STATUS_COLORS: Record<SessionStatus, string> = {
   completed: 'green',
 };
 
+/**
+ * Get progress string from todos (e.g., "2/5")
+ */
+function getProgress(session: ClaudeSession): string {
+  if (!session.todos || session.todos.length === 0) return '';
+  const completed = session.todos.filter(t => t.status === 'completed').length;
+  const total = session.todos.length;
+  return `${completed}/${total}`;
+}
+
+/**
+ * Get the current task description (activeForm of in_progress todo)
+ */
+function getCurrentTask(session: ClaudeSession): string {
+  if (!session.todos) return session.currentTask || '';
+  const inProgress = session.todos.find(t => t.status === 'in_progress');
+  return inProgress?.activeForm || session.currentTask || '';
+}
+
 // ─────────────────────────────────────────────────────────────
 // QUICK ACTIONS
 // ─────────────────────────────────────────────────────────────
@@ -203,9 +222,11 @@ interface SessionRowProps {
 // Fixed column widths for alignment (using ASCII only for reliable width)
 const COL_TREE = 6;      // Tree prefix (selection + indent + icon)
 const COL_EMOJI = 2;     // Emoji (separate to avoid width issues)
-const COL_NAME = 22;     // Session name including child count
-const COL_STATUS = 12;   // Status verb
+const COL_NAME = 18;     // Session name including child count
+const COL_VIBE = 10;     // Status verb (playful)
+const COL_PROGRESS = 5;  // Task progress (e.g., "2/5")
 const COL_ALERT = 2;     // Alert indicator (padded)
+const COL_TASK = 25;     // Current task (truncated)
 
 function SessionRow({ session, selected, depth = 0, hasChildren = false, expanded = true, aggregatedStatus }: SessionRowProps) {
   const aggStatus = aggregatedStatus || sessionStore.getAggregatedStatus(session.id);
@@ -214,6 +235,8 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
   const emoji = getSessionEmoji(session.name);
   const statusVerb = getStatusVerb(displayStatus, session.id);
   const canAct = canSendInput(session);
+  const progress = getProgress(session);
+  const currentTask = getCurrentTask(session);
 
   // Tree prefix using ASCII only: selection + indent + expand icon
   const treeChar = hasChildren ? (expanded ? 'v' : '>') : (depth > 0 ? '-' : ' ');
@@ -256,15 +279,22 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
 
       <Text color="gray">│</Text>
 
-      {/* Status column */}
-      <Box width={COL_STATUS}>
+      {/* Vibe column (playful status) */}
+      <Box width={COL_VIBE}>
         {displayStatus === 'working' ? (
           <Text color={color}>
-            <Spinner type="dots" /> {statusVerb.slice(0, COL_STATUS - 2)}
+            <Spinner type="dots" /> {statusVerb.slice(0, COL_VIBE - 2)}
           </Text>
         ) : (
-          <Text color={color}>{statusVerb.padEnd(COL_STATUS)}</Text>
+          <Text color={color}>{statusVerb.padEnd(COL_VIBE)}</Text>
         )}
+      </Box>
+
+      <Text color="gray">│</Text>
+
+      {/* Progress column */}
+      <Box width={COL_PROGRESS}>
+        <Text color={progress ? 'cyan' : 'gray'}>{progress.padEnd(COL_PROGRESS) || '—'.padEnd(COL_PROGRESS)}</Text>
       </Box>
 
       <Text color="gray">│</Text>
@@ -278,8 +308,10 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
 
       <Text color="gray">│</Text>
 
-      {/* Task column */}
-      <Text dimColor> {session.currentTask?.slice(0, 30) || '—'}</Text>
+      {/* Task column - shows current activity from TodoWrite */}
+      <Box width={COL_TASK}>
+        <Text dimColor>{currentTask.slice(0, COL_TASK) || '—'}</Text>
+      </Box>
     </Box>
   );
 }
@@ -354,11 +386,13 @@ function ListView({ sessions, selectedIndex, expandedIds, flattenedSessions, sho
         <Box width={COL_EMOJI}><Text bold>{''}</Text></Box>
         <Box width={COL_NAME}><Text bold>{'Session'.padEnd(COL_NAME)}</Text></Box>
         <Text color="gray">│</Text>
-        <Box width={COL_STATUS}><Text bold>{'Vibe'.padEnd(COL_STATUS)}</Text></Box>
+        <Box width={COL_VIBE}><Text bold>{'Vibe'.padEnd(COL_VIBE)}</Text></Box>
+        <Text color="gray">│</Text>
+        <Box width={COL_PROGRESS}><Text bold>{'Prog'.padEnd(COL_PROGRESS)}</Text></Box>
         <Text color="gray">│</Text>
         <Box width={COL_ALERT}><Text bold>{'!'.padEnd(COL_ALERT)}</Text></Box>
         <Text color="gray">│</Text>
-        <Text bold> Task</Text>
+        <Box width={COL_TASK}><Text bold>{'Task'.padEnd(COL_TASK)}</Text></Box>
       </Box>
       {rootSessions.map(session => (
         <SessionTree

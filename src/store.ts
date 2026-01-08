@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus } from './types.js';
+import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus, TodoItem } from './types.js';
 
 const DB_PATH = `${process.env.HOME}/.claude-session-manager.db`;
 
@@ -41,6 +41,13 @@ function initDb(): Database {
     // Index already exists
   }
 
+  // Migration: add todos JSON column for TodoWrite tracking
+  try {
+    db.run(`ALTER TABLE sessions ADD COLUMN todos TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   return db;
 }
 
@@ -67,6 +74,16 @@ class SessionStore {
   }
 
   private rowToSession(row: any): ClaudeSession {
+    // Parse todos JSON if present
+    let todos: TodoItem[] | undefined;
+    if (row.todos) {
+      try {
+        todos = JSON.parse(row.todos);
+      } catch {
+        todos = undefined;
+      }
+    }
+
     return {
       id: row.id,
       name: row.name,
@@ -83,6 +100,7 @@ class SessionStore {
         ttyPath: row.tty_path || undefined,
       },
       parentId: row.parent_id || undefined,
+      todos,
     };
   }
 
@@ -110,13 +128,14 @@ class SessionStore {
       alerting: updates.alerting ?? existing?.alerting ?? false,
       terminal,
       parentId: updates.parentId ?? existing?.parentId,
+      todos: updates.todos ?? existing?.todos,
     };
 
     // Persist to SQLite
     this.db.run(`
       INSERT OR REPLACE INTO sessions
-      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id, todos)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       session.id,
       session.name,
@@ -131,6 +150,7 @@ class SessionStore {
       session.terminal.shellPid || null,
       session.terminal.ttyPath || null,
       session.parentId || null,
+      session.todos ? JSON.stringify(session.todos) : null,
     ]);
 
     this.cache.set(sessionId, session);

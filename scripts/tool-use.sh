@@ -3,6 +3,7 @@
 # Fires after Claude uses a tool - indicates active work
 # Clears the alerting state since Claude is now working
 # Special handling for Task tool to register subagents
+# Special handling for TodoWrite to capture task progress
 
 CSM_PORT="${CSM_PORT:-7432}"
 CSM_HOST="${CSM_HOST:-localhost}"
@@ -14,6 +15,24 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 if [ -z "$SESSION_ID" ]; then
   exit 0
+fi
+
+# Check if this is a TodoWrite tool (task progress tracking)
+if [ "$TOOL_NAME" = "TodoWrite" ]; then
+  # Extract the todos array as compact JSON
+  TODOS=$(echo "$INPUT" | jq -c '.tool_input.todos // []')
+
+  if [ -n "$TODOS" ] && [ "$TODOS" != "[]" ]; then
+    # Send todo update event
+    curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"event\": \"todo_update\",
+        \"session_id\": \"$SESSION_ID\",
+        \"cwd\": \"$CWD\",
+        \"todos\": $TODOS
+      }" > /dev/null 2>&1 || true
+  fi
 fi
 
 # Check if this is a Task tool (subagent spawn)
