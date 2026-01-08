@@ -44,4 +44,15 @@ curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
     \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
   }" > /dev/null 2>&1 || true
 
+# Set status to working - Claude is about to process user's message
+curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"event\": \"status_change\",
+    \"session_id\": \"$SESSION_ID\",
+    \"cwd\": \"$CWD\",
+    \"status\": \"working\",
+    \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+  }" > /dev/null 2>&1 || true
+
 exit 0

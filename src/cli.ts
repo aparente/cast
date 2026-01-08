@@ -181,6 +181,17 @@ Add the following to your ~/.claude/settings.json:
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${scriptsPath}/stop.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
