@@ -1,0 +1,83 @@
+/**
+ * Represents the status of a Claude Code session
+ */
+export type SessionStatus =
+  | 'idle'           // Waiting, no active work
+  | 'working'        // Claude is processing/generating
+  | 'needs_input'    // Waiting for user input/approval
+  | 'error'          // Something went wrong
+  | 'completed';     // Task finished
+
+/**
+ * Terminal types we can send input to
+ */
+export type TerminalType = 'tmux' | 'vscode' | 'iterm2' | 'unknown';
+
+/**
+ * Terminal context for quick actions
+ */
+export interface TerminalContext {
+  type: TerminalType;
+  id: string;           // tmux pane target, iTerm session ID, etc.
+  shellPid?: number;    // Shell process ID
+  ttyPath?: string;     // TTY device path
+}
+
+/**
+ * Quick action types
+ */
+export type QuickActionType = 'approve' | 'deny' | 'respond' | 'cancel';
+
+/**
+ * A Claude Code session running in a terminal
+ */
+export interface ClaudeSession {
+  id: string;
+  name: string;
+  status: SessionStatus;
+  projectPath?: string;
+  currentTask?: string;
+  pendingMessage?: string;  // What Claude is asking/waiting for
+  lastActivity: Date;
+  alerting: boolean;
+  terminal: TerminalContext;
+  // Subagent hierarchy
+  parentId?: string;        // If this is a subagent, the parent session ID
+}
+
+/**
+ * Aggregated status for a session including its children
+ */
+export interface AggregatedStatus {
+  status: SessionStatus;
+  alerting: boolean;
+  childCount: number;
+  alertingChildCount: number;
+}
+
+/**
+ * Dashboard view modes
+ */
+export type ViewMode = 'list' | 'kanban' | 'detail';
+
+/**
+ * Kanban columns for session organization
+ */
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  statuses: SessionStatus[];
+}
+
+export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
+  { id: 'waiting', title: 'Needs Input', statuses: ['needs_input'] },
+  { id: 'working', title: 'Working', statuses: ['working'] },
+  { id: 'idle', title: 'Idle', statuses: ['idle', 'completed'] },
+];
+
+/**
+ * Check if quick actions are available for a session
+ */
+export function canSendInput(session: ClaudeSession): boolean {
+  return session.terminal.type === 'tmux' && session.terminal.id !== '';
+}
