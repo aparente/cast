@@ -1,6 +1,6 @@
-# Claude Session Manager
+# Cast 🦀
 
-A terminal UI for managing multiple Claude Code sessions in VS Code.
+A terminal UI for managing your cast of Claude Code sessions.
 
 ## Project Overview
 - **Purpose**: Dashboard to monitor and manage concurrent Claude Code sessions

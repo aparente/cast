@@ -1,5 +1,5 @@
 {
-  "name": "claude-session-manager",
+  "name": "cast",
   "module": "index.ts",
   "type": "module",
   "private": true,

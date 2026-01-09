@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus, TodoItem } from './types.js';
 
-const DB_PATH = `${process.env.HOME}/.claude-session-manager.db`;
+const DB_PATH = `${process.env.HOME}/.cast.db`;
 
 /**
  * Initialize SQLite database with migrations

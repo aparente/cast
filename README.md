@@ -1,6 +1,8 @@
-# Claude Session Manager 🦀
+# Cast 🦀
 
-A terminal UI (TUI) for managing multiple Claude Code sessions. See which sessions need attention at a glance, with playful design touches that make managing AI assistants feel like play.
+A terminal UI (TUI) for managing your cast of Claude Code sessions. See which sessions need attention at a glance, with playful design touches that make managing AI assistants feel like play.
+
+> **cast** /kast/ *noun* — a group of crabs; also: the ensemble of characters in your terminal
 
 ## Features
 
@@ -33,8 +35,8 @@ bun run src/cli.ts
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/yourusername/claude-session-manager.git
-cd claude-session-manager
+git clone https://github.com/yourusername/cast.git
+cd cast
 bun install
 ```
 
@@ -199,7 +201,7 @@ bun run src/cli.ts install-hooks
 
 | Path | Purpose |
 |------|---------|
-| `~/.claude-session-manager.db` | SQLite database for session persistence |
+| `~/.cast.db` | SQLite database for session persistence |
 | `~/.claude/settings.json` | Claude Code hooks configuration |
 
 ## Terminal Support for Quick Actions

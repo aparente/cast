@@ -563,7 +563,7 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box borderStyle="round" borderColor={titleColor} paddingX={2}>
-        <Text bold color={titleColor}>🦀 Claude Session Manager</Text>
+        <Text bold color={titleColor}>🦀 Cast</Text>
         {serverPort && <Text dimColor> (:{serverPort})</Text>}
         <Text>  </Text>
         <Text color={view === 'list' ? 'cyan' : 'gray'} bold={view === 'list'}>[l]ist</Text>

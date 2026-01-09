@@ -8,7 +8,7 @@ import { sessionStore } from './store.js';
 
 program
   .name('csm')
-  .description('Claude Session Manager - Terminal UI for managing Claude Code sessions')
+  .description('Cast - Terminal UI for managing your cast of Claude Code sessions')
   .version('0.1.0');
 
 program
@@ -108,7 +108,7 @@ program
     const scriptsPath = new URL('../scripts', import.meta.url).pathname;
 
     console.log(`
-Claude Session Manager - Hook Installation
+Cast - Hook Installation
 ==========================================
 
 Add the following to your ~/.claude/settings.json:
