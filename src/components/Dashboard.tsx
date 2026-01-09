@@ -574,8 +574,15 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
       </Box>
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
-          ↑/↓ nav • ←/→ tree • Enter detail • c completed • l/k view • q quit
+          ↑/↓ nav • Enter detail • c completed • l/k view • q quit
         </Text>
+      </Box>
+      <Box paddingX={1}>
+        <Text dimColor>
+          In detail: </Text><Text color="green">y</Text><Text dimColor> approve • </Text>
+        <Text color="red">n</Text><Text dimColor> deny • </Text>
+        <Text color="blue">r</Text><Text dimColor> respond • </Text>
+        <Text color="gray">(tmux only)</Text>
       </Box>
     </Box>
   );
