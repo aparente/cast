@@ -49,27 +49,23 @@ if [ -n "$CWD" ] && [ -d "$CWD" ]; then
 fi
 
 # Detect terminal context for quick actions
+# Priority: tmux > iterm2 > vscode (tmux can run inside others)
 TERMINAL_TYPE="unknown"
 TERMINAL_ID=""
 
-# Check for tmux
+# Check for tmux FIRST (highest priority - enables quick actions)
 if [ -n "$TMUX" ] && [ -n "$TMUX_PANE" ]; then
   TERMINAL_TYPE="tmux"
   # Get full pane target (session:window.pane)
   TERMINAL_ID=$(tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || echo "$TMUX_PANE")
-fi
-
-# Check for VS Code integrated terminal
-if [ -n "$VSCODE_INJECTION" ] || [ -n "$TERM_PROGRAM" ] && [ "$TERM_PROGRAM" = "vscode" ]; then
-  TERMINAL_TYPE="vscode"
-  # VS Code terminal ID would need extension to fully resolve
-  TERMINAL_ID="${VSCODE_SHELL_INTEGRATION:-unknown}"
-fi
-
 # Check for iTerm2
-if [ "$TERM_PROGRAM" = "iTerm.app" ]; then
+elif [ "$TERM_PROGRAM" = "iTerm.app" ]; then
   TERMINAL_TYPE="iterm2"
   TERMINAL_ID="${ITERM_SESSION_ID:-unknown}"
+# Check for VS Code integrated terminal (lowest priority)
+elif [ -n "$VSCODE_INJECTION" ] || [ "$TERM_PROGRAM" = "vscode" ]; then
+  TERMINAL_TYPE="vscode"
+  TERMINAL_ID="${VSCODE_SHELL_INTEGRATION:-unknown}"
 fi
 
 # Capture PID for potential stdin injection

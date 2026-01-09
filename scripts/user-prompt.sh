@@ -44,21 +44,21 @@ if [ -n "$CWD" ] && [ -d "$CWD" ]; then
 fi
 
 # Detect terminal context
+# Priority: tmux > iterm2 > vscode (tmux can run inside others)
 TERMINAL_TYPE="unknown"
 TERMINAL_ID=""
 
+# Check for tmux FIRST (highest priority - enables quick actions)
 if [ -n "$TMUX" ] && [ -n "$TMUX_PANE" ]; then
   TERMINAL_TYPE="tmux"
   TERMINAL_ID=$(tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null || echo "$TMUX_PANE")
-fi
-
-if [ "$TERM_PROGRAM" = "vscode" ] || [ -n "$VSCODE_INJECTION" ]; then
-  TERMINAL_TYPE="vscode"
-fi
-
-if [ "$TERM_PROGRAM" = "iTerm.app" ]; then
+# Check for iTerm2
+elif [ "$TERM_PROGRAM" = "iTerm.app" ]; then
   TERMINAL_TYPE="iterm2"
   TERMINAL_ID="${ITERM_SESSION_ID:-unknown}"
+# Check for VS Code integrated terminal (lowest priority)
+elif [ "$TERM_PROGRAM" = "vscode" ] || [ -n "$VSCODE_INJECTION" ]; then
+  TERMINAL_TYPE="vscode"
 fi
 
 # Register/update session with project name
