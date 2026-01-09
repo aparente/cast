@@ -266,11 +266,16 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
   const nameCol = `${truncatedName} ${childBadge}`.padEnd(COL_NAME);
 
   // Alert indicator (ASCII)
+  // * = session is alerting (needs input), green if actions available
+  // ! = child session is alerting
   let alertChar = ' ';
-  if (canAct && session.alerting) {
+  let alertColor: string | undefined;
+  if (session.alerting) {
     alertChar = '*';
+    alertColor = canAct ? 'green' : 'yellow';  // Green if we can act, yellow otherwise
   } else if (aggStatus.alertingChildCount > 0) {
     alertChar = '!';
+    alertColor = 'yellow';
   }
 
   return (
@@ -316,7 +321,7 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
 
       {/* Alert column */}
       <Box width={COL_ALERT}>
-        <Text color={alertChar === '*' ? 'green' : alertChar === '!' ? 'yellow' : undefined} bold={alertChar !== ' '}>
+        <Text color={alertColor} bold={alertChar !== ' '}>
           {alertChar.padEnd(COL_ALERT)}
         </Text>
       </Box>
