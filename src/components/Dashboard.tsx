@@ -682,16 +682,27 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
   // Toggle to show/hide completed subagents (hidden by default)
   const [showCompleted, setShowCompleted] = useState(false);
 
+  // Track known session IDs to detect truly new sessions
+  const [knownIds, setKnownIds] = useState<Set<string>>(() => {
+    return new Set(sessionStore.all().map(s => s.id));
+  });
+
   useEffect(() => {
     const unsubscribe = sessionStore.subscribe(() => {
-      setSessions(sessionStore.sorted());
-      // Auto-expand new sessions
-      setExpandedIds(prev => {
-        const next = new Set(prev);
-        for (const s of sessionStore.all()) {
-          next.add(s.id);
+      const currentSessions = sessionStore.sorted();
+      setSessions(currentSessions);
+
+      // Only auto-expand truly NEW sessions (not seen before)
+      setKnownIds(prevKnown => {
+        const newIds = new Set(prevKnown);
+        for (const s of currentSessions) {
+          if (!prevKnown.has(s.id)) {
+            // This is a new session - auto-expand it
+            setExpandedIds(prev => new Set([...prev, s.id]));
+          }
+          newIds.add(s.id);
         }
-        return next;
+        return newIds;
       });
     });
     return unsubscribe;
