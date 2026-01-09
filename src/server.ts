@@ -43,18 +43,33 @@ function deriveSessionName(cwd?: string): string {
 
 /**
  * Send input to a tmux pane
+ * Uses -l flag for literal text, then sends Enter separately
+ * This approach works with Ink's raw mode input handling
  */
 async function sendToTmux(paneTarget: string, text: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const proc = Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, text, 'Enter'], {
+    // Send text with -l flag (literal - interprets text as-is)
+    const textProc = Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, '-l', text], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      return { success: false, error: stderr || `Exit code ${exitCode}` };
+    const textExit = await textProc.exited;
+    if (textExit !== 0) {
+      const stderr = await new Response(textProc.stderr).text();
+      return { success: false, error: stderr || `Exit code ${textExit}` };
     }
+
+    // Send Enter key separately to submit
+    const enterProc = Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const enterExit = await enterProc.exited;
+    if (enterExit !== 0) {
+      const stderr = await new Response(enterProc.stderr).text();
+      return { success: false, error: stderr || `Exit code ${enterExit}` };
+    }
+
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };

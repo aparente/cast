@@ -5,6 +5,9 @@ A terminal UI (TUI) for managing multiple Claude Code sessions. See which sessio
 ## Features
 
 - **Real-time session tracking** — All active Claude Code sessions in one dashboard
+- **Smart session names** — Auto-detects project name from package.json, git remote, or directory
+- **Progress tracking** — Shows task progress (X/Y completed) from Claude's TodoWrite tool
+- **Status descriptions** — See what Claude is currently doing via transcript parsing
 - **Subagent tree view** — See Task subagents as children of parent sessions with expandable rows
 - **Status bubbling** — If any subagent needs input, parent session shows alert indicator
 - **Alert highlighting** — Sessions needing input bubble to the top with ⚡ indicators
@@ -170,8 +173,9 @@ bun run src/cli.ts install-hooks
 | `SessionStart` | New session begins | Registers session with terminal context |
 | `SessionEnd` | Session terminates | Removes session from dashboard |
 | `Notification` | Claude needs input | Sets alerting=true, status=needs_input |
-| `PostToolUse` | After any tool call | Updates status=working, clears alert |
+| `PostToolUse` | After any tool call | Updates status=working, tracks TodoWrite |
 | `UserPromptSubmit` | User sends message | Ensures session is registered |
+| `Stop` | Claude's turn ends | Parses transcript for status description |
 
 ### Data Flow
 
@@ -232,10 +236,14 @@ Inspired by the "design delight" of Claude Code itself:
 ## Future Plans
 
 - [x] Subagent tree view (Tasks as children of parent sessions)
+- [x] TodoWrite progress tracking
+- [x] Smart session naming (package.json, git, directory)
+- [x] Transcript parsing for status descriptions
+- [x] Quick actions for tmux sessions
 - [ ] VS Code extension for quick actions
 - [ ] iTerm2 AppleScript integration
 - [ ] Sound/visual alerts integration
-- [ ] Session history and transcript viewing
+- [ ] Improved quick action UX (visible input field)
 
 ## License
 
