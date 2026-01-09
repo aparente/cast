@@ -7,6 +7,7 @@ interface HookEvent {
   event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop' | 'todo_update';
   session_id: string;
   cwd?: string;
+  project_name?: string;       // Descriptive project name from package.json, git, etc.
   message?: string;
   tool_name?: string;
   status?: SessionStatus;
@@ -67,8 +68,10 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
 
   switch (event.event) {
     case 'session_start': {
+      // Use project_name from hook if available, otherwise derive from cwd
+      const sessionName = event.project_name || deriveSessionName(cwd);
       sessionStore.upsert(session_id, {
-        name: deriveSessionName(cwd),
+        name: sessionName,
         projectPath: cwd,
         status: 'idle',
         alerting: false,
@@ -79,7 +82,7 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
           ttyPath: event.tty_path,
         },
       });
-      return { success: true, message: `Session ${session_id} registered` };
+      return { success: true, message: `Session ${session_id} registered as "${sessionName}"` };
     }
 
     case 'session_end': {

@@ -2,6 +2,7 @@
 # Hook: SessionStart
 # Registers a new Claude Code session with the dashboard
 # Captures terminal context for quick actions
+# Derives descriptive project name from package.json or git remote
 
 CSM_PORT="${CSM_PORT:-7432}"
 CSM_HOST="${CSM_HOST:-localhost}"
@@ -16,6 +17,35 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -z "$SESSION_ID" ]; then
   echo "No session_id in hook input" >&2
   exit 0
+fi
+
+# Derive a descriptive project name
+PROJECT_NAME=""
+
+if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+  # Try package.json first (Node.js projects)
+  if [ -f "$CWD/package.json" ]; then
+    PROJECT_NAME=$(jq -r '.name // empty' "$CWD/package.json" 2>/dev/null)
+  fi
+
+  # Try pyproject.toml (Python projects)
+  if [ -z "$PROJECT_NAME" ] && [ -f "$CWD/pyproject.toml" ]; then
+    PROJECT_NAME=$(grep -m1 '^name\s*=' "$CWD/pyproject.toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/')
+  fi
+
+  # Try git remote URL
+  if [ -z "$PROJECT_NAME" ] && [ -d "$CWD/.git" ]; then
+    GIT_URL=$(git -C "$CWD" remote get-url origin 2>/dev/null)
+    if [ -n "$GIT_URL" ]; then
+      # Extract repo name from URL (handles both HTTPS and SSH)
+      PROJECT_NAME=$(echo "$GIT_URL" | sed 's/.*[/:]\([^/]*\)\.git$/\1/' | sed 's/.*[/:]\([^/]*\)$/\1/')
+    fi
+  fi
+
+  # Fall back to directory name
+  if [ -z "$PROJECT_NAME" ]; then
+    PROJECT_NAME=$(basename "$CWD")
+  fi
 fi
 
 # Detect terminal context for quick actions
@@ -53,6 +83,7 @@ curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
     \"event\": \"session_start\",
     \"session_id\": \"$SESSION_ID\",
     \"cwd\": \"$CWD\",
+    \"project_name\": \"$PROJECT_NAME\",
     \"terminal_type\": \"$TERMINAL_TYPE\",
     \"terminal_id\": \"$TERMINAL_ID\",
     \"shell_pid\": $SHELL_PID,
