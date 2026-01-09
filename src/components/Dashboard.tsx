@@ -49,6 +49,12 @@ const STATUS_COLORS: Record<SessionStatus, string> = {
   completed: 'green',
 };
 
+function getActionStatusColor(status: string): string {
+  if (status.includes('✓')) return 'green';
+  if (status.includes('✗')) return 'red';
+  return 'yellow';
+}
+
 /**
  * Get progress string from todos (e.g., "2/5")
  */
@@ -207,7 +213,7 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
       {/* Action Status */}
       {actionStatus && (
         <Box marginTop={1}>
-          <Text color={actionStatus.includes('✓') ? 'green' : actionStatus.includes('✗') ? 'red' : 'yellow'}>
+          <Text color={getActionStatusColor(actionStatus)}>
             {actionStatus}
           </Text>
         </Box>

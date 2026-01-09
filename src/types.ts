@@ -93,6 +93,18 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
 ];
 
 /**
+ * Status priority for sorting and bubbling (lower = higher priority)
+ * Centralized to avoid duplication across files
+ */
+export const STATUS_PRIORITY: Record<SessionStatus, number> = {
+  needs_input: 0,
+  error: 1,
+  working: 2,
+  idle: 3,
+  completed: 4,
+};
+
+/**
  * Check if quick actions are available for a session
  */
 export function canSendInput(session: ClaudeSession): boolean {

@@ -42,6 +42,25 @@ function deriveSessionName(cwd?: string): string {
 }
 
 /**
+ * Build a descriptive name for a subagent
+ * Prioritizes description, falls back to type, then cwd
+ */
+function buildSubagentName(description?: string, subagentType?: string, cwd?: string): string {
+  const baseName = deriveSessionName(cwd);
+  const typeSuffix = subagentType ? ` (${subagentType})` : '';
+
+  if (!description) {
+    return subagentType ? `${baseName}${typeSuffix}` : baseName;
+  }
+
+  const truncatedDesc = description.length > 30
+    ? description.slice(0, 27) + '...'
+    : description;
+
+  return truncatedDesc + typeSuffix;
+}
+
+/**
  * Send input to a tmux pane
  * Uses -l flag for literal text, then sends Enter separately
  * This approach works with Ink's raw mode input handling
@@ -138,21 +157,7 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
     }
 
     case 'subagent_start': {
-      // Register a new subagent with parent relationship
-      // Use description if available, otherwise fall back to type
-      let name: string;
-      if (event.description) {
-        // Truncate long descriptions but keep them readable
-        const desc = event.description.length > 30
-          ? event.description.slice(0, 27) + '...'
-          : event.description;
-        name = event.subagent_type ? `${desc} (${event.subagent_type})` : desc;
-      } else if (event.subagent_type) {
-        name = `${deriveSessionName(cwd)} (${event.subagent_type})`;
-      } else {
-        name = deriveSessionName(cwd);
-      }
-
+      const name = buildSubagentName(event.description, event.subagent_type, cwd);
       sessionStore.upsert(session_id, {
         name,
         projectPath: cwd,

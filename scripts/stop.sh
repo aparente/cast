@@ -3,8 +3,8 @@
 # Fires when Claude's turn is about to end
 # Parses transcript to extract what Claude said/did for status display
 
-CSM_PORT="${CSM_PORT:-7432}"
-CSM_HOST="${CSM_HOST:-localhost}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
 
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
@@ -14,7 +14,7 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
-# Try to extract last assistant message from transcript for status
+# Extract last assistant message from transcript for status
 LAST_MESSAGE=""
 if [ -n "$CWD" ]; then
   # Convert CWD to Claude's project path format (slashes become dashes)
@@ -44,16 +44,13 @@ if [ -n "$CWD" ]; then
   fi
 fi
 
-# Send status update with parsed message
-curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"event\": \"status_change\",
-    \"session_id\": \"$SESSION_ID\",
-    \"cwd\": \"$CWD\",
-    \"status\": \"idle\",
-    \"last_message\": $(echo "$LAST_MESSAGE" | jq -R .),
-    \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-  }" > /dev/null 2>&1 || true
+send_event "{
+  \"event\": \"status_change\",
+  \"session_id\": \"$SESSION_ID\",
+  \"cwd\": \"$CWD\",
+  \"status\": \"idle\",
+  \"last_message\": $(echo "$LAST_MESSAGE" | jq -R .),
+  \"timestamp\": \"$(timestamp)\"
+}"
 
 exit 0

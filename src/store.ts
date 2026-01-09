@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus, TodoItem } from './types.js';
+import { STATUS_PRIORITY } from './types.js';
 
 const DB_PATH = `${process.env.HOME}/.cast.db`;
 
@@ -199,14 +200,7 @@ class SessionStore {
     return this.all().sort((a, b) => {
       if (a.alerting && !b.alerting) return -1;
       if (!a.alerting && b.alerting) return 1;
-      const statusPriority: Record<SessionStatus, number> = {
-        needs_input: 0,
-        error: 1,
-        working: 2,
-        idle: 3,
-        completed: 4,
-      };
-      const statusDiff = statusPriority[a.status] - statusPriority[b.status];
+      const statusDiff = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
       if (statusDiff !== 0) return statusDiff;
       return b.lastActivity.getTime() - a.lastActivity.getTime();
     });
@@ -290,20 +284,11 @@ class SessionStore {
     const children = this.getChildren(sessionId);
     const alertingChildren = children.filter(c => c.alerting || this.getAggregatedStatus(c.id).alerting);
 
-    // Status priority for bubbling
-    const statusPriority: Record<SessionStatus, number> = {
-      needs_input: 0,
-      error: 1,
-      working: 2,
-      idle: 3,
-      completed: 4,
-    };
-
     // Find highest priority status among session and all descendants
     let highestStatus = session.status;
     for (const child of children) {
       const childAgg = this.getAggregatedStatus(child.id);
-      if (statusPriority[childAgg.status] < statusPriority[highestStatus]) {
+      if (STATUS_PRIORITY[childAgg.status] < STATUS_PRIORITY[highestStatus]) {
         highestStatus = childAgg.status;
       }
     }
@@ -333,21 +318,13 @@ class SessionStore {
    */
   sortedRoots(): ClaudeSession[] {
     return this.getRootSessions().sort((a, b) => {
-      // Sort roots by aggregated urgency
       const aggA = this.getAggregatedStatus(a.id);
       const aggB = this.getAggregatedStatus(b.id);
 
       if (aggA.alerting && !aggB.alerting) return -1;
       if (!aggA.alerting && aggB.alerting) return 1;
 
-      const statusPriority: Record<SessionStatus, number> = {
-        needs_input: 0,
-        error: 1,
-        working: 2,
-        idle: 3,
-        completed: 4,
-      };
-      const statusDiff = statusPriority[aggA.status] - statusPriority[aggB.status];
+      const statusDiff = STATUS_PRIORITY[aggA.status] - STATUS_PRIORITY[aggB.status];
       if (statusDiff !== 0) return statusDiff;
 
       return b.lastActivity.getTime() - a.lastActivity.getTime();
