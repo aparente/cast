@@ -48,6 +48,13 @@ function initDb(): Database {
     // Column already exists, ignore
   }
 
+  // Migration: add last_status for transcript-parsed status
+  try {
+    db.run(`ALTER TABLE sessions ADD COLUMN last_status TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   return db;
 }
 
@@ -101,6 +108,7 @@ class SessionStore {
       },
       parentId: row.parent_id || undefined,
       todos,
+      lastStatus: row.last_status || undefined,
     };
   }
 
@@ -129,13 +137,14 @@ class SessionStore {
       terminal,
       parentId: updates.parentId ?? existing?.parentId,
       todos: updates.todos ?? existing?.todos,
+      lastStatus: updates.lastStatus ?? existing?.lastStatus,
     };
 
     // Persist to SQLite
     this.db.run(`
       INSERT OR REPLACE INTO sessions
-      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id, todos)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id, todos, last_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       session.id,
       session.name,
@@ -151,6 +160,7 @@ class SessionStore {
       session.terminal.ttyPath || null,
       session.parentId || null,
       session.todos ? JSON.stringify(session.todos) : null,
+      session.lastStatus || null,
     ]);
 
     this.cache.set(sessionId, session);

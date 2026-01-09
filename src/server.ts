@@ -11,6 +11,7 @@ interface HookEvent {
   message?: string;
   tool_name?: string;
   status?: SessionStatus;
+  last_message?: string;        // Last assistant message for status display
   timestamp?: string;
   // Terminal context fields
   terminal_type?: TerminalType;
@@ -115,6 +116,7 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
         sessionStore.upsert(session_id, {
           status: event.status,
           alerting: event.status === 'needs_input',
+          lastStatus: event.last_message || undefined,
         });
       }
       return { success: true, message: `Session ${session_id} status updated` };

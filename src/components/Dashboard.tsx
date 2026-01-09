@@ -61,11 +61,26 @@ function getProgress(session: ClaudeSession): string {
 
 /**
  * Get the current task description (activeForm of in_progress todo)
+ * Falls back to lastStatus (what Claude last said) when idle
  */
 function getCurrentTask(session: ClaudeSession): string {
-  if (!session.todos) return session.currentTask || '';
-  const inProgress = session.todos.find(t => t.status === 'in_progress');
-  return inProgress?.activeForm || session.currentTask || '';
+  // First, check for in-progress todo
+  if (session.todos) {
+    const inProgress = session.todos.find(t => t.status === 'in_progress');
+    if (inProgress) return inProgress.activeForm;
+  }
+
+  // If working, show current tool use
+  if (session.status === 'working' && session.currentTask) {
+    return session.currentTask;
+  }
+
+  // If idle, show last message from transcript (what Claude said)
+  if (session.lastStatus) {
+    return session.lastStatus;
+  }
+
+  return session.currentTask || '';
 }
 
 // ─────────────────────────────────────────────────────────────
