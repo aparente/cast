@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus, TodoItem } from './types.js';
+import type { ClaudeSession, SessionStatus, TerminalContext, TerminalType, AggregatedStatus, TodoItem, AttentionType } from './types.js';
 import { STATUS_PRIORITY } from './types.js';
 
 const DB_PATH = `${process.env.HOME}/.cast.db`;
@@ -56,6 +56,13 @@ function initDb(): Database {
     // Column already exists, ignore
   }
 
+  // Migration: add attention_type for critical vs casual detection
+  try {
+    db.run(`ALTER TABLE sessions ADD COLUMN attention_type TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   return db;
 }
 
@@ -71,6 +78,11 @@ class SessionStore {
   constructor() {
     this.db = initDb();
     this.loadFromDb();
+    // Clean up any stale sessions on startup
+    const cleaned = this.cleanupStaleSessions();
+    if (cleaned > 0) {
+      console.log(`Cleaned up ${cleaned} stale session(s)`);
+    }
   }
 
   private loadFromDb() {
@@ -110,6 +122,7 @@ class SessionStore {
       parentId: row.parent_id || undefined,
       todos,
       lastStatus: row.last_status || undefined,
+      attentionType: (row.attention_type as AttentionType) || null,
     };
   }
 
@@ -135,6 +148,7 @@ class SessionStore {
       pendingMessage: updates.pendingMessage ?? existing?.pendingMessage,
       lastActivity: new Date(),
       alerting: updates.alerting ?? existing?.alerting ?? false,
+      attentionType: updates.attentionType ?? existing?.attentionType ?? null,
       terminal,
       parentId: updates.parentId ?? existing?.parentId,
       todos: updates.todos ?? existing?.todos,
@@ -144,8 +158,8 @@ class SessionStore {
     // Persist to SQLite
     this.db.run(`
       INSERT OR REPLACE INTO sessions
-      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id, todos, last_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, status, project_path, current_task, pending_message, last_activity, alerting, terminal_type, terminal_id, shell_pid, tty_path, parent_id, todos, last_status, attention_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       session.id,
       session.name,
@@ -162,6 +176,7 @@ class SessionStore {
       session.parentId || null,
       session.todos ? JSON.stringify(session.todos) : null,
       session.lastStatus || null,
+      session.attentionType || null,
     ]);
 
     this.cache.set(sessionId, session);
@@ -236,9 +251,60 @@ class SessionStore {
       this.upsert(sessionId, {
         pendingMessage: undefined,
         alerting: false,
+        attentionType: null,
         status: 'working',
       });
     }
+  }
+
+  /**
+   * Check if a process is still running
+   */
+  private isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0); // Signal 0 = check existence without killing
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Remove sessions whose shell process is no longer running.
+   * Also marks sessions without PIDs as stale if inactive for 2+ hours.
+   * Returns the number of cleaned up sessions.
+   */
+  cleanupStaleSessions(): number {
+    const sessions = this.all();
+    let cleaned = 0;
+    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+
+    for (const session of sessions) {
+      // Skip if session is already completed
+      if (session.status === 'completed') {
+        continue;
+      }
+
+      // If we have a PID, check if it's still alive
+      if (session.terminal.shellPid) {
+        if (!this.isProcessAlive(session.terminal.shellPid)) {
+          this.upsert(session.id, { status: 'completed', alerting: false, attentionType: null });
+          cleaned++;
+        }
+      } else {
+        // No PID - mark as stale if inactive for 2+ hours
+        if (session.lastActivity.getTime() < twoHoursAgo) {
+          this.upsert(session.id, { status: 'completed', alerting: false, attentionType: null });
+          cleaned++;
+        }
+      }
+    }
+
+    if (cleaned > 0) {
+      this.notifyListeners();
+    }
+
+    return cleaned;
   }
 
   /**

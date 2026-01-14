@@ -44,6 +44,8 @@ if [ -n "$CWD" ]; then
   fi
 fi
 
+# Send idle status with last_message
+# Server will ignore idle if status is already needs_input (notification fired first)
 send_event "{
   \"event\": \"status_change\",
   \"session_id\": \"$SESSION_ID\",

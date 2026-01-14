@@ -26,7 +26,12 @@ export interface TerminalContext {
 /**
  * Quick action types
  */
-export type QuickActionType = 'approve' | 'deny' | 'respond' | 'cancel';
+export type QuickActionType = 'approve' | 'deny' | 'respond' | 'cancel' | 'focus';
+
+/**
+ * Attention type for distinguishing critical vs casual input requests
+ */
+export type AttentionType = 'critical' | 'casual' | null;
 
 /**
  * Todo item status
@@ -54,6 +59,7 @@ export interface ClaudeSession {
   pendingMessage?: string;  // What Claude is asking/waiting for
   lastActivity: Date;
   alerting: boolean;
+  attentionType?: AttentionType;  // Critical (permission) vs casual (question)
   terminal: TerminalContext;
   // Subagent hierarchy
   parentId?: string;        // If this is a subagent, the parent session ID

@@ -1,5 +1,26 @@
 import { sessionStore } from './store.js';
-import type { SessionStatus, TerminalType, QuickActionType, TodoItem } from './types.js';
+import type { SessionStatus, TerminalType, QuickActionType, TodoItem, AttentionType, ClaudeSession } from './types.js';
+
+/**
+ * Keywords that indicate a critical input request (permission, approval, etc.)
+ */
+const CRITICAL_KEYWORDS = ['permission', 'approve', 'plan', 'proceed', 'allow', 'confirm', 'yes/no', 'y/n'];
+
+/**
+ * Determine if an input request is critical (permission) vs casual (question)
+ */
+function determineAttentionType(message?: string, isNotification?: boolean): AttentionType {
+  if (!message && !isNotification) return null;
+
+  // Notification events are at least casual - check for critical keywords
+  if (isNotification) {
+    const lowerMessage = (message || '').toLowerCase();
+    const isCritical = CRITICAL_KEYWORDS.some(kw => lowerMessage.includes(kw));
+    return isCritical ? 'critical' : 'casual';
+  }
+
+  return null;
+}
 
 const DEFAULT_PORT = 7432; // "SSMGR" on phone keypad :)
 
@@ -96,6 +117,104 @@ async function sendToTmux(paneTarget: string, text: string): Promise<{ success: 
 }
 
 /**
+ * Focus/jump to a terminal session
+ * For tmux: select-pane if in tmux, or use AppleScript to focus iTerm2
+ * For others: best-effort app activation
+ */
+async function focusTerminal(session: ClaudeSession): Promise<{ success: boolean; error?: string }> {
+  const { type, id } = session.terminal;
+
+  if (type === 'tmux' && id) {
+    try {
+      // Check if we're inside tmux
+      if (process.env.TMUX) {
+        // First switch to the window, then select the pane
+        // id format: "session:window.pane" (e.g., "main:0.1")
+        const sessionWindow = id.split('.')[0] || id;
+
+        // Switch to window first
+        const winProc = Bun.spawn(['tmux', 'select-window', '-t', sessionWindow], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await winProc.exited;
+
+        // Then select the pane
+        const paneProc = Bun.spawn(['tmux', 'select-pane', '-t', id], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const exit = await paneProc.exited;
+        if (exit !== 0) {
+          const stderr = await new Response(paneProc.stderr).text();
+          return { success: false, error: stderr || `Exit code ${exit}` };
+        }
+        return { success: true };
+      } else {
+        // Not in tmux - use AppleScript to focus iTerm2 and switch to the tmux session
+        // This works better than opening a new terminal
+        const script = `
+          tell application "iTerm2"
+            activate
+          end tell
+        `;
+        const proc = Bun.spawn(['osascript', '-e', script], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await proc.exited;
+
+        // After focusing iTerm, try to switch tmux to the right pane
+        // (this works if iTerm is running tmux)
+        const sessionWindow = id.split('.')[0] || id;
+        const tmuxProc = Bun.spawn(['tmux', 'select-window', '-t', sessionWindow], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await tmuxProc.exited;
+        const paneProc = Bun.spawn(['tmux', 'select-pane', '-t', id], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await paneProc.exited;
+
+        return { success: true };
+      }
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  if (type === 'iterm2') {
+    try {
+      const proc = Bun.spawn(['open', '-a', 'iTerm'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      await proc.exited;
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  if (type === 'vscode') {
+    try {
+      const proc = Bun.spawn(['open', '-a', 'Visual Studio Code'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      await proc.exited;
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  return { success: false, error: `Cannot focus terminal type: ${type}` };
+}
+
+/**
  * Handle incoming hook events
  */
 function handleHookEvent(event: HookEvent): { success: boolean; message: string } {
@@ -126,19 +245,22 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
     }
 
     case 'notification': {
+      const attentionType = determineAttentionType(event.message, true);
       sessionStore.upsert(session_id, {
         status: 'needs_input',
         alerting: true,
+        attentionType,
         currentTask: event.message || 'Waiting for input',
         pendingMessage: event.message,
       });
-      return { success: true, message: `Session ${session_id} alerting` };
+      return { success: true, message: `Session ${session_id} alerting (${attentionType})` };
     }
 
     case 'tool_use': {
       sessionStore.upsert(session_id, {
         status: 'working',
         alerting: false,
+        attentionType: null,  // Clear attention type when working
         currentTask: event.tool_name ? `Using ${event.tool_name}` : undefined,
         pendingMessage: undefined,  // Clear pending on tool use
       });
@@ -146,12 +268,32 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
     }
 
     case 'status_change': {
+      const updates: Partial<ClaudeSession> = {};
+      const currentSession = sessionStore.get(session_id);
+
+      // Only update status if explicitly provided
+      // BUT: Don't override needs_input with idle (race condition with Notification hook)
       if (event.status) {
-        sessionStore.upsert(session_id, {
-          status: event.status,
-          alerting: event.status === 'needs_input',
-          lastStatus: event.last_message || undefined,
-        });
+        const shouldSkipIdle = event.status === 'idle' &&
+          currentSession?.status === 'needs_input' &&
+          currentSession?.alerting;
+
+        if (!shouldSkipIdle) {
+          updates.status = event.status;
+          updates.alerting = event.status === 'needs_input';
+          if (event.status !== 'needs_input') {
+            updates.attentionType = null;
+          }
+        }
+      }
+
+      // Always update lastStatus if provided (for context display)
+      if (event.last_message) {
+        updates.lastStatus = event.last_message;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        sessionStore.upsert(session_id, updates);
       }
       return { success: true, message: `Session ${session_id} status updated` };
     }
@@ -229,6 +371,14 @@ async function handleAction(req: ActionRequest): Promise<{ success: boolean; mes
       }
       textToSend = req.response;
       break;
+    case 'focus': {
+      // Focus terminal doesn't need text sending - handle separately
+      const focusResult = await focusTerminal(session);
+      if (focusResult.success) {
+        return { success: true, message: `Focused ${session.name}` };
+      }
+      return { success: false, message: focusResult.error || 'Failed to focus terminal' };
+    }
     default:
       return { success: false, message: 'Unknown action type' };
   }
@@ -304,6 +454,12 @@ export function startServer(port: number = DEFAULT_PORT): { port: number; stop: 
         } catch (err) {
           return Response.json({ success: false, message: String(err) }, { status: 400 });
         }
+      }
+
+      // Cleanup stale sessions
+      if (url.pathname === '/cleanup' && req.method === 'POST') {
+        const cleaned = sessionStore.cleanupStaleSessions();
+        return Response.json({ success: true, cleaned });
       }
 
       return Response.json({ error: 'Not found' }, { status: 404 });

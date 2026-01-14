@@ -4,8 +4,43 @@ import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { sessionStore } from '../store.js';
 import { DEFAULT_PORT } from '../server.js';
-import type { ClaudeSession, ViewMode, SessionStatus, QuickActionType, AggregatedStatus } from '../types.js';
+import type { ClaudeSession, ViewMode, SessionStatus, QuickActionType, AggregatedStatus, AttentionType } from '../types.js';
 import { canSendInput } from '../types.js';
+
+// ─────────────────────────────────────────────────────────────
+// HYPERLINK SUPPORT (OSC8)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Get the editor command from environment
+ */
+function getEditorCommand(): string {
+  const editor = process.env.EDITOR || '';
+  if (editor.includes('cursor')) return 'cursor';
+  if (editor.includes('code') || editor.includes('Code')) return 'code';
+  // Fallback chain
+  return 'cursor';
+}
+
+/**
+ * Build a URL that opens the path in the editor
+ */
+function buildEditorUrl(path: string): string {
+  const editor = getEditorCommand();
+  if (editor === 'code') return `vscode://file${path}`;
+  if (editor === 'cursor') return `cursor://file${path}`;
+  return `file://${path}`;
+}
+
+/**
+ * OSC8 hyperlink component - makes text clickable in supporting terminals
+ */
+function Hyperlink({ url, children }: { url: string; children: React.ReactNode }) {
+  // OSC 8 format: \x1b]8;;URL\x07TEXT\x1b]8;;\x07
+  const start = `\x1b]8;;${url}\x07`;
+  const end = `\x1b]8;;\x07`;
+  return <Text>{start}{children}{end}</Text>;
+}
 
 interface DashboardProps {
   viewMode?: ViewMode;
@@ -123,7 +158,11 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
     const success = await sendAction(session.id, action, text);
     if (success) {
       setActionStatus('✓ Sent!');
-      setTimeout(onClose, 500);
+      if (action !== 'focus') {
+        setTimeout(onClose, 500);
+      } else {
+        setTimeout(() => setActionStatus(null), 1500);
+      }
     } else {
       setActionStatus('✗ Failed');
     }
@@ -144,6 +183,10 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
     if (key.escape || input === 'q') {
       onClose();
     }
+    // Jump to terminal
+    if (input === 'o') {
+      handleAction('focus');
+    }
     if (canAct && session.alerting) {
       if (input === 'y') handleAction('approve');
       if (input === 'n') handleAction('deny');
@@ -153,10 +196,17 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
 
   return (
     <Box flexDirection="column" borderStyle="double" borderColor="cyan" padding={1}>
-      {/* Header */}
+      {/* Header with clickable path */}
       <Box marginBottom={1}>
         <Text bold color="cyan">{emoji} {session.name}</Text>
-        <Text dimColor> — {session.projectPath}</Text>
+        <Text dimColor> — </Text>
+        {session.projectPath ? (
+          <Hyperlink url={buildEditorUrl(session.projectPath)}>
+            <Text dimColor underline>{session.projectPath}</Text>
+          </Hyperlink>
+        ) : (
+          <Text dimColor>—</Text>
+        )}
       </Box>
 
       {/* Status */}
@@ -166,17 +216,30 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
           {session.status === 'working' ? <><Spinner type="dots" /> </> : null}
           {getStatusVerb(session.status, session.id)}
         </Text>
+        {session.attentionType === 'critical' && (
+          <Text color="magenta" bold> (permission required)</Text>
+        )}
       </Box>
 
-      {/* Terminal Info */}
+      {/* Terminal Info with jump hint */}
       <Box marginBottom={1}>
         <Text dimColor>Terminal: </Text>
         <Text color={canAct ? 'green' : 'gray'}>
           {session.terminal.type}
           {session.terminal.id ? ` (${session.terminal.id})` : ''}
-          {canAct ? ' ✓ actions available' : ' — no quick actions'}
         </Text>
+        <Text dimColor> — </Text>
+        <Text color="cyan">[o] jump</Text>
+        {canAct && <Text color="green"> ✓ actions</Text>}
       </Box>
+
+      {/* Last Claude Message - context for what led to input request */}
+      {session.lastStatus && session.alerting && (
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="cyan" padding={1}>
+          <Text bold color="cyan">Claude said:</Text>
+          <Text dimColor>{session.lastStatus.slice(0, 200)}{session.lastStatus.length > 200 ? '...' : ''}</Text>
+        </Box>
+      )}
 
       {/* Pending Message */}
       {session.pendingMessage && (
@@ -272,13 +335,20 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
   const nameCol = `${truncatedName} ${childBadge}`.padEnd(COL_NAME);
 
   // Alert indicator (ASCII)
-  // * = session is alerting (needs input), green if actions available
+  // * = session is alerting:
+  //   - magenta: critical (permission request)
+  //   - green: casual + actionable (tmux)
+  //   - yellow: casual + view-only (non-tmux)
   // ! = child session is alerting
   let alertChar = ' ';
   let alertColor: string | undefined;
   if (session.alerting) {
     alertChar = '*';
-    alertColor = canAct ? 'green' : 'yellow';  // Green if we can act, yellow otherwise
+    if (session.attentionType === 'critical') {
+      alertColor = 'magenta';  // Critical: permission/approval needed
+    } else {
+      alertColor = canAct ? 'green' : 'yellow';  // Casual: green if actionable
+    }
   } else if (aggStatus.alertingChildCount > 0) {
     alertChar = '!';
     alertColor = 'yellow';
@@ -402,7 +472,11 @@ interface ListViewProps {
 }
 
 function ListView({ sessions, selectedIndex, expandedIds, flattenedSessions, showCompleted }: ListViewProps) {
-  const rootSessions = sessionStore.sortedRoots();
+  let rootSessions = sessionStore.sortedRoots();
+  // Filter out completed root sessions if toggle is off
+  if (!showCompleted) {
+    rootSessions = rootSessions.filter(s => s.status !== 'completed');
+  }
   const selectedSession = flattenedSessions[selectedIndex];
 
   return (
@@ -580,15 +654,18 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
       </Box>
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
-          ↑/↓ nav • Enter detail • c completed • l/k view • q quit
+          ↑/↓ nav • Enter detail • o jump • d done • D cleanup • c completed • l/k view • q quit
         </Text>
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>
-          In detail: </Text><Text color="green">y</Text><Text dimColor> approve • </Text>
-        <Text color="red">n</Text><Text dimColor> deny • </Text>
-        <Text color="blue">r</Text><Text dimColor> respond • </Text>
-        <Text color="gray">(tmux only)</Text>
+        <Text dimColor>Alert: </Text>
+        <Text color="magenta">*</Text><Text dimColor>=permission </Text>
+        <Text color="green">*</Text><Text dimColor>=actionable </Text>
+        <Text color="yellow">*</Text><Text dimColor>=view-only </Text>
+        <Text dimColor>│ In detail: </Text>
+        <Text color="green">y</Text><Text dimColor>/</Text>
+        <Text color="red">n</Text><Text dimColor>/</Text>
+        <Text color="blue">r</Text>
       </Box>
     </Box>
   );
@@ -681,13 +758,9 @@ function flattenTree(
     ? sessions.filter(s => s.parentId === parentId)
     : sessions.filter(s => !s.parentId);
 
-  // Filter out completed subagents if toggle is off
+  // Filter out completed sessions if toggle is off
   if (!showCompleted) {
-    roots = roots.filter(s => {
-      // Always show root sessions, only filter completed children
-      if (!parentId) return true;
-      return s.status !== 'completed';
-    });
+    roots = roots.filter(s => s.status !== 'completed');
   }
 
   const result: ClaudeSession[] = [];
@@ -741,6 +814,18 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     return unsubscribe;
   }, []);
 
+  // Periodic cleanup of stale sessions (every 30 seconds)
+  useEffect(() => {
+    const cleanup = () => {
+      const cleaned = sessionStore.cleanupStaleSessions();
+      if (cleaned > 0) {
+        setSessions(sessionStore.sorted());
+      }
+    };
+    const interval = setInterval(cleanup, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Compute flattened list for navigation (roots + visible children)
   const flattenedSessions = flattenTree(sessions, expandedIds, showCompleted);
 
@@ -775,6 +860,28 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     if (input === 'c') setShowCompleted(prev => !prev);  // Toggle completed subagents
     if (key.upArrow) setSelectedIndex(i => Math.max(0, i - 1));
     if (key.downArrow) setSelectedIndex(i => Math.min(flattenedSessions.length - 1, i + 1));
+
+    // 'o' - Jump to terminal
+    if (input === 'o' && selectedSession) {
+      sendAction(selectedSession.id, 'focus');
+    }
+
+    // 'd' - Mark selected session as completed (remove from active view)
+    if (input === 'd' && selectedSession) {
+      sessionStore.upsert(selectedSession.id, {
+        status: 'completed',
+        alerting: false,
+        attentionType: null,
+      });
+    }
+
+    // 'D' - Clean all stale sessions
+    if (input === 'D') {
+      const cleaned = sessionStore.cleanupStaleSessions();
+      if (cleaned > 0) {
+        setSessions(sessionStore.sorted());
+      }
+    }
 
     // Enter: toggle expand if has children, or show detail
     if (key.return && selectedSession) {

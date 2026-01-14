@@ -18,7 +18,9 @@ fi
 PROJECT_NAME=$(derive_project_name "$CWD")
 detect_terminal
 
-SHELL_PID=$$
+# Use PPID (parent process) to get the actual shell running Claude Code
+# $$ is this script's PID which exits immediately
+SHELL_PID=${PPID:-$$}
 TTY_PATH=$(tty 2>/dev/null || echo "unknown")
 
 send_event "{
