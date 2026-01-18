@@ -1,7 +1,7 @@
 #!/bin/bash
 # Hook: PostToolUse
 # Fires after Claude uses a tool - indicates active work
-# Special handling for Task tool (subagents) and TodoWrite (task progress)
+# Special handling for Task tool (subagents), TodoWrite (task progress), and plan mode
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -42,6 +42,41 @@ if [ "$TOOL_NAME" = "Task" ]; then
       \"cwd\": \"$CWD\",
       \"subagent_type\": \"$SUBAGENT_TYPE\",
       \"description\": \"$DESCRIPTION\"
+    }"
+  fi
+fi
+
+# Handle EnterPlanMode tool (entering plan mode)
+if [ "$TOOL_NAME" = "EnterPlanMode" ]; then
+  send_event "{
+    \"event\": \"plan_update\",
+    \"session_id\": \"$SESSION_ID\",
+    \"cwd\": \"$CWD\",
+    \"plan_name\": \"Planning...\"
+  }"
+fi
+
+# Handle ExitPlanMode tool (plan complete, try to find plan file)
+if [ "$TOOL_NAME" = "ExitPlanMode" ]; then
+  # Try to find the most recent plan file for this project
+  PLAN_FILE=$(find_recent_plan "$CWD")
+  if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
+    PLAN_NAME=$(basename "$PLAN_FILE" .md | tr '_-' ' ')
+    PLAN_STEPS=$(extract_plan_steps "$PLAN_FILE")
+    send_event "{
+      \"event\": \"plan_update\",
+      \"session_id\": \"$SESSION_ID\",
+      \"cwd\": \"$CWD\",
+      \"plan_name\": \"$PLAN_NAME\",
+      \"plan_file_path\": \"$PLAN_FILE\",
+      \"plan_steps\": $PLAN_STEPS
+    }"
+  else
+    # No plan file found, just mark as having exited plan mode
+    send_event "{
+      \"event\": \"plan_update\",
+      \"session_id\": \"$SESSION_ID\",
+      \"cwd\": \"$CWD\"
     }"
   fi
 fi

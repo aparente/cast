@@ -48,6 +48,24 @@ export interface TodoItem {
 }
 
 /**
+ * Plan step extracted from a plan file
+ */
+export interface PlanStep {
+  title: string;
+  completed: boolean;
+}
+
+/**
+ * Plan context for a session
+ */
+export interface PlanContext {
+  name: string;           // Plan name (from filename or heading)
+  steps: PlanStep[];      // Extracted steps
+  currentStep?: number;   // 0-indexed current step
+  filePath?: string;      // Path to plan file
+}
+
+/**
  * A Claude Code session running in a terminal
  */
 export interface ClaudeSession {
@@ -66,6 +84,8 @@ export interface ClaudeSession {
   // Task tracking from TodoWrite
   todos?: TodoItem[];       // Current todo list
   lastStatus?: string;      // Parsed status from last Claude message
+  // Plan tracking
+  plan?: PlanContext;       // Active plan context
 }
 
 /**

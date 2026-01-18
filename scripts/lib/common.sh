@@ -78,3 +78,76 @@ send_event() {
 timestamp() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
+
+# Find the most recent plan file for a project
+# Usage: find_recent_plan "/path/to/project"
+# Returns: path to most recent .md file in ~/.claude/projects/<encoded-path>/ or empty
+find_recent_plan() {
+  local cwd="$1"
+  if [ -z "$cwd" ]; then
+    echo ""
+    return
+  fi
+
+  # Claude Code encodes project paths by replacing / with -
+  local encoded_path="${cwd//\//-}"
+  encoded_path="${encoded_path#-}"  # Remove leading dash
+
+  local claude_project_dir="$HOME/.claude/projects/$encoded_path"
+
+  if [ ! -d "$claude_project_dir" ]; then
+    echo ""
+    return
+  fi
+
+  # Find the most recently modified .md file (plan files are markdown)
+  # Exclude conversation transcripts (.jsonl files)
+  local plan_file
+  plan_file=$(find "$claude_project_dir" -name "*.md" -type f -mmin -60 2>/dev/null | \
+    xargs ls -t 2>/dev/null | head -1)
+
+  echo "$plan_file"
+}
+
+# Extract plan steps from a markdown plan file
+# Usage: extract_plan_steps "/path/to/plan.md"
+# Returns: JSON array of {title, completed} objects
+extract_plan_steps() {
+  local plan_file="$1"
+  if [ -z "$plan_file" ] || [ ! -f "$plan_file" ]; then
+    echo "[]"
+    return
+  fi
+
+  # Extract markdown list items (- [ ] or - [x] for checkboxes, or just - for bullet points)
+  # Also capture ## headings as major steps
+  local steps="[]"
+
+  # Parse checkboxes (- [ ] unchecked, - [x] checked)
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*\[([[:space:]]|x|X)\][[:space:]]*(.+)$ ]]; then
+      local check="${BASH_REMATCH[1]}"
+      local title="${BASH_REMATCH[2]}"
+      local completed="false"
+      if [[ "$check" =~ ^[xX]$ ]]; then
+        completed="true"
+      fi
+      # Escape quotes in title for JSON
+      title="${title//\"/\\\"}"
+      steps=$(echo "$steps" | jq --arg t "$title" --argjson c "$completed" '. + [{title: $t, completed: $c}]')
+    fi
+  done < "$plan_file"
+
+  # If no checkboxes found, try to extract numbered steps (1. 2. 3.)
+  if [ "$steps" = "[]" ]; then
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^[[:space:]]*[0-9]+\.[[:space:]]+(.+)$ ]]; then
+        local title="${BASH_REMATCH[1]}"
+        title="${title//\"/\\\"}"
+        steps=$(echo "$steps" | jq --arg t "$title" '. + [{title: $t, completed: false}]')
+      fi
+    done < "$plan_file"
+  fi
+
+  echo "$steps"
+}

@@ -91,9 +91,18 @@ function getActionStatusColor(status: string): string {
 }
 
 /**
- * Get progress string from todos (e.g., "2/5")
+ * Get progress string from todos or plan (e.g., "2/5")
+ * Prioritizes plan progress if available
  */
 function getProgress(session: ClaudeSession): string {
+  // If session has a plan with steps, show plan progress
+  if (session.plan && session.plan.steps.length > 0) {
+    const completed = session.plan.steps.filter(s => s.completed).length;
+    const total = session.plan.steps.length;
+    return `${completed}/${total}`;
+  }
+
+  // Fall back to todo progress
   if (!session.todos || session.todos.length === 0) return '';
   const completed = session.todos.filter(t => t.status === 'completed').length;
   const total = session.todos.length;
@@ -101,8 +110,48 @@ function getProgress(session: ClaudeSession): string {
 }
 
 /**
+ * Get the current plan step name
+ */
+function getCurrentPlanStep(session: ClaudeSession): string | null {
+  if (!session.plan || session.plan.steps.length === 0) return null;
+
+  // If currentStep is set, use it
+  if (session.plan.currentStep !== undefined) {
+    const step = session.plan.steps[session.plan.currentStep];
+    if (step) return step.title;
+  }
+
+  // Otherwise find first incomplete step
+  const incompleteStep = session.plan.steps.find(s => !s.completed);
+  return incompleteStep?.title ?? null;
+}
+
+/**
+ * Extract a completion summary from Claude's last message
+ * Parses first sentence or action phrase to show what was completed
+ */
+function extractCompletionSummary(lastStatus: string): string {
+  // Remove markdown formatting
+  let text = lastStatus.replace(/[*_`#]/g, '').trim();
+
+  // Get first sentence (up to period, question mark, or exclamation)
+  const sentenceMatch = text.match(/^([^.!?]+[.!?]?)/);
+  if (sentenceMatch?.[1]) {
+    text = sentenceMatch[1].trim();
+  }
+
+  // Truncate if still too long (keep it concise for list view)
+  if (text.length > 40) {
+    text = text.slice(0, 37) + '...';
+  }
+
+  return text;
+}
+
+/**
  * Get the current task description (activeForm of in_progress todo)
  * Falls back to lastStatus (what Claude last said) when idle
+ * Shows completion context when waiting for input
  */
 function getCurrentTask(session: ClaudeSession): string {
   // First, check for in-progress todo
@@ -114,6 +163,15 @@ function getCurrentTask(session: ClaudeSession): string {
   // If working, show current tool use
   if (session.status === 'working' && session.currentTask) {
     return session.currentTask;
+  }
+
+  // If waiting for input, show completion context with "waiting" suffix
+  if (session.status === 'needs_input') {
+    if (session.lastStatus) {
+      const summary = extractCompletionSummary(session.lastStatus);
+      return `${summary}, waiting…`;
+    }
+    return session.pendingMessage || 'Waiting for input…';
   }
 
   // If idle, show last message from transcript (what Claude said)
@@ -232,6 +290,25 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
         <Text color="cyan">[o] jump</Text>
         {canAct && <Text color="green"> ✓ actions</Text>}
       </Box>
+
+      {/* Plan Context */}
+      {session.plan && (
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="blue" padding={1}>
+          <Box>
+            <Text bold color="blue">📋 Plan: </Text>
+            <Text>{session.plan.name}</Text>
+            {session.plan.steps.length > 0 && (
+              <Text dimColor> ({session.plan.steps.filter(s => s.completed).length}/{session.plan.steps.length})</Text>
+            )}
+          </Box>
+          {getCurrentPlanStep(session) && (
+            <Box marginTop={1}>
+              <Text dimColor>Current step: </Text>
+              <Text color="cyan">{getCurrentPlanStep(session)}</Text>
+            </Box>
+          )}
+        </Box>
+      )}
 
       {/* Last Claude Message - context for what led to input request */}
       {session.lastStatus && session.alerting && (

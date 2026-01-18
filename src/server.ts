@@ -1,5 +1,5 @@
 import { sessionStore } from './store.js';
-import type { SessionStatus, TerminalType, QuickActionType, TodoItem, AttentionType, ClaudeSession } from './types.js';
+import type { SessionStatus, TerminalType, QuickActionType, TodoItem, AttentionType, ClaudeSession, PlanContext, PlanStep } from './types.js';
 
 /**
  * Keywords that indicate a critical input request (permission, approval, etc.)
@@ -25,7 +25,7 @@ function determineAttentionType(message?: string, isNotification?: boolean): Att
 const DEFAULT_PORT = 7432; // "SSMGR" on phone keypad :)
 
 interface HookEvent {
-  event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop' | 'todo_update';
+  event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop' | 'todo_update' | 'plan_update';
   session_id: string;
   cwd?: string;
   project_name?: string;       // Descriptive project name from package.json, git, etc.
@@ -45,6 +45,11 @@ interface HookEvent {
   description?: string;        // Task description for subagents
   // Todo tracking
   todos?: TodoItem[];          // Current todo list from TodoWrite
+  // Plan tracking
+  plan_name?: string;          // Name of the active plan
+  plan_steps?: PlanStep[];     // Steps extracted from plan file
+  plan_current_step?: number;  // Current step index (0-based)
+  plan_file_path?: string;     // Path to the plan file
 }
 
 interface ActionRequest {
@@ -200,11 +205,33 @@ async function focusTerminal(session: ClaudeSession): Promise<{ success: boolean
 
   if (type === 'vscode') {
     try {
-      const proc = Bun.spawn(['open', '-a', 'Visual Studio Code'], {
+      // Detect if using Cursor (VS Code fork) or VS Code
+      const appName = process.env.TERM_PROGRAM === 'cursor' ? 'Cursor' : 'Visual Studio Code';
+
+      // Use AppleScript to activate VS Code and focus the terminal panel
+      // This sends Ctrl+` which toggles/focuses the integrated terminal
+      const script = `
+        tell application "${appName}"
+          activate
+        end tell
+        delay 0.2
+        tell application "System Events"
+          keystroke "\`" using control down
+        end tell
+      `;
+      const proc = Bun.spawn(['osascript', '-e', script], {
         stdout: 'pipe',
         stderr: 'pipe',
       });
-      await proc.exited;
+      const exit = await proc.exited;
+      if (exit !== 0) {
+        // Fallback: just open the app if AppleScript fails
+        const fallback = Bun.spawn(['open', '-a', appName], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await fallback.exited;
+      }
       return { success: true };
     } catch (err) {
       return { success: false, error: String(err) };
@@ -337,6 +364,23 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
         });
       }
       return { success: true, message: `Session ${session_id} todos updated` };
+    }
+
+    case 'plan_update': {
+      // Update session with plan context
+      if (event.plan_name) {
+        const plan: PlanContext = {
+          name: event.plan_name,
+          steps: event.plan_steps || [],
+          currentStep: event.plan_current_step,
+          filePath: event.plan_file_path,
+        };
+        sessionStore.upsert(session_id, { plan });
+      } else {
+        // Clear plan if no name provided (plan mode exited)
+        sessionStore.upsert(session_id, { plan: undefined });
+      }
+      return { success: true, message: `Session ${session_id} plan updated` };
     }
 
     default:
