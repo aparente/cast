@@ -5,6 +5,48 @@
 CSM_PORT="${CSM_PORT:-7432}"
 CSM_HOST="${CSM_HOST:-localhost}"
 
+# Check if a path is a "global" location (not a specific project)
+# Returns 0 (true) if global, 1 (false) if project-specific
+is_global_path() {
+  local path="$1"
+  local home_dir="$HOME"
+
+  # Paths inside ~/.claude are global (working on Claude config/skills/hooks)
+  if [[ "$path" == "$home_dir/.claude"* ]]; then
+    return 0
+  fi
+
+  # Home directory itself is global
+  if [ "$path" = "$home_dir" ]; then
+    return 0
+  fi
+
+  # Common generic directories
+  case "$path" in
+    "$home_dir/Desktop"|"$home_dir/Downloads"|"$home_dir/Documents"|"/tmp"*|"/var/tmp"*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+# Generate a friendly random name for global sessions
+generate_friendly_name() {
+  # Adjectives and nouns for friendly names
+  local adjectives=("quick" "bright" "calm" "bold" "swift" "keen" "warm" "cool" "fresh" "clear")
+  local nouns=("spark" "wave" "leaf" "star" "cloud" "breeze" "stone" "flame" "river" "moon")
+
+  # Use /dev/urandom for randomness (trim whitespace from od output)
+  local rand1 rand2
+  rand1=$(od -An -N1 -tu1 /dev/urandom | tr -d ' ')
+  rand2=$(od -An -N1 -tu1 /dev/urandom | tr -d ' ')
+  local adj_idx=$(( rand1 % 10 ))
+  local noun_idx=$(( rand2 % 10 ))
+
+  echo "${adjectives[$adj_idx]}-${nouns[$noun_idx]}"
+}
+
 # Derive a descriptive project name from the working directory
 # Usage: derive_project_name "/path/to/project"
 derive_project_name() {
@@ -13,6 +55,25 @@ derive_project_name() {
 
   if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
     echo ""
+    return
+  fi
+
+  # Check if this is a global/generic path (not a specific project)
+  if is_global_path "$cwd"; then
+    # For ~/.claude paths, indicate what kind of Claude work
+    if [[ "$cwd" == "$HOME/.claude"* ]]; then
+      local subpath="${cwd#$HOME/.claude}"
+      case "$subpath" in
+        /plugins*|/skills*) echo "skill-editing" ;;
+        /hooks*) echo "hook-config" ;;
+        /plans*) echo "plan-editing" ;;
+        /handoffs*) echo "handoff-review" ;;
+        *) echo "claude-config" ;;
+      esac
+    else
+      # Generic location - use friendly random name
+      generate_friendly_name
+    fi
     return
   fi
 
