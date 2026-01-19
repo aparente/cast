@@ -14,11 +14,15 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Get last assistant message for context (what Claude said before waiting)
+LAST_MESSAGE=$(get_last_assistant_message "$CWD" "$SESSION_ID")
+
 send_event "{
   \"event\": \"notification\",
   \"session_id\": \"$SESSION_ID\",
   \"cwd\": \"$CWD\",
   \"message\": $(echo "$MESSAGE" | jq -R .),
+  \"last_message\": $(echo "$LAST_MESSAGE" | jq -R .),
   \"timestamp\": \"$(timestamp)\"
 }"
 

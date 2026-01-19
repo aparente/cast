@@ -79,6 +79,53 @@ timestamp() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
+# Extract last assistant message from transcript for context display
+# Usage: get_last_assistant_message "/path/to/project" "session_id"
+# Returns: First ~100 chars of last assistant message text
+get_last_assistant_message() {
+  local cwd="$1"
+  local session_id="$2"
+
+  if [ -z "$cwd" ] || [ -z "$session_id" ]; then
+    echo ""
+    return
+  fi
+
+  # Convert CWD to Claude's project path format (slashes become dashes)
+  local project_dir
+  project_dir=$(echo "$cwd" | sed 's|^/||' | sed 's|/|-|g')
+  local transcript_path="$HOME/.claude/projects/-$project_dir/$session_id.jsonl"
+
+  if [ ! -f "$transcript_path" ]; then
+    echo ""
+    return
+  fi
+
+  # Get last assistant message text (first text block, first 100 chars)
+  local last_msg
+  last_msg=$(grep '"type":"assistant"' "$transcript_path" 2>/dev/null | \
+    tail -1 | \
+    jq -r '.message.content[] | select(.type=="text") | .text' 2>/dev/null | \
+    head -1 | \
+    head -c 100 | \
+    tr '\n' ' ' | \
+    sed 's/^[[:space:]]*//' | \
+    sed 's/[[:space:]]*$//')
+
+  # Truncate at sentence boundary if possible
+  if [ ${#last_msg} -gt 50 ]; then
+    local truncated
+    truncated=$(echo "$last_msg" | sed 's/\([.!?]\).*/\1/')
+    if [ ${#truncated} -gt 10 ] && [ ${#truncated} -lt 80 ]; then
+      last_msg="$truncated"
+    else
+      last_msg="${last_msg:0:50}..."
+    fi
+  fi
+
+  echo "$last_msg"
+}
+
 # Find the most recent plan file for a project
 # Usage: find_recent_plan "/path/to/project"
 # Returns: path to most recent .md file in ~/.claude/projects/<encoded-path>/ or empty

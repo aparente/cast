@@ -83,6 +83,11 @@ class SessionStore {
     if (cleaned > 0) {
       console.log(`Cleaned up ${cleaned} stale session(s)`);
     }
+    // Also prune old completed sessions (>30 min) and very old sessions (>2 hr)
+    const pruned = this.pruneOldSessions();
+    if (pruned > 0) {
+      console.log(`Removed ${pruned} old session(s)`);
+    }
   }
 
   private loadFromDb() {
@@ -317,6 +322,29 @@ class SessionStore {
       this.remove(session.id);
     }
     return stale.length;
+  }
+
+  /**
+   * Prune old sessions on startup:
+   * - Completed sessions older than 30 minutes
+   * - Any session older than 2 hours (regardless of status)
+   */
+  pruneOldSessions(): number {
+    const thirtyMinAgo = Date.now() - (30 * 60 * 1000);
+    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+
+    const toRemove = this.all().filter(s => {
+      // Remove any session older than 2 hours
+      if (s.lastActivity.getTime() < twoHoursAgo) return true;
+      // Remove completed sessions older than 30 minutes
+      if (s.status === 'completed' && s.lastActivity.getTime() < thirtyMinAgo) return true;
+      return false;
+    });
+
+    for (const session of toRemove) {
+      this.remove(session.id);
+    }
+    return toRemove.length;
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -731,7 +731,7 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
       </Box>
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
-          ↑/↓ nav • Enter detail • o jump • d done • D cleanup • c completed • l/k view • q quit
+          ↑/↓ nav • Enter detail • o jump • d done • D cleanup • P prune • c completed • l/k view • q quit
         </Text>
       </Box>
       <Box paddingX={1}>
@@ -864,6 +864,8 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
   });
   // Toggle to show/hide completed subagents (hidden by default)
   const [showCompleted, setShowCompleted] = useState(false);
+  // Status message for user feedback (auto-clears after 3s)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Track known session IDs to detect truly new sessions
   const [knownIds, setKnownIds] = useState<Set<string>>(() => {
@@ -955,9 +957,17 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     // 'D' - Clean all stale sessions
     if (input === 'D') {
       const cleaned = sessionStore.cleanupStaleSessions();
-      if (cleaned > 0) {
-        setSessions(sessionStore.sorted());
-      }
+      setSessions(sessionStore.sorted());
+      setStatusMessage(cleaned > 0 ? `Cleaned ${cleaned} stale session(s)` : 'No stale sessions found');
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
+
+    // 'P' - Prune (remove) sessions older than 30 minutes
+    if (input === 'P') {
+      const pruned = sessionStore.pruneStale(30);
+      setSessions(sessionStore.sorted());
+      setStatusMessage(pruned > 0 ? `Removed ${pruned} old session(s)` : 'No old sessions to remove');
+      setTimeout(() => setStatusMessage(null), 3000);
     }
 
     // Enter: toggle expand if has children, or show detail
@@ -1018,6 +1028,12 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
           flattenedSessions={flattenedSessions}
           showCompleted={showCompleted}
         />
+      )}
+
+      {statusMessage && (
+        <Box paddingX={1}>
+          <Text color="cyan">{statusMessage}</Text>
+        </Box>
       )}
 
       <StatusBar sessions={sessions} />

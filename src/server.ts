@@ -273,13 +273,18 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
 
     case 'notification': {
       const attentionType = determineAttentionType(event.message, true);
-      sessionStore.upsert(session_id, {
+      const updates: Partial<ClaudeSession> = {
         status: 'needs_input',
         alerting: true,
         attentionType,
         currentTask: event.message || 'Waiting for input',
         pendingMessage: event.message,
-      });
+      };
+      // Include last assistant message for context display
+      if (event.last_message) {
+        updates.lastStatus = event.last_message;
+      }
+      sessionStore.upsert(session_id, updates);
       return { success: true, message: `Session ${session_id} alerting (${attentionType})` };
     }
 
