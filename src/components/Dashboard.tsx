@@ -76,12 +76,13 @@ function getStatusVerb(status: SessionStatus, sessionId: string): string {
   return verbs[index] ?? verbs[0] ?? status;
 }
 
+// Color palette: muted base, color only for meaning
 const STATUS_COLORS: Record<SessionStatus, string> = {
   idle: 'gray',
-  working: 'blue',
-  needs_input: 'yellow',
+  working: 'blueBright',
+  needs_input: 'magenta',
   error: 'red',
-  completed: 'green',
+  completed: 'gray',
 };
 
 function getActionStatusColor(status: string): string {
@@ -253,10 +254,10 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
   });
 
   return (
-    <Box flexDirection="column" borderStyle="double" borderColor="cyan" padding={1}>
+    <Box flexDirection="column" borderStyle="double" borderColor="gray" padding={1}>
       {/* Header with clickable path */}
       <Box marginBottom={1}>
-        <Text bold color="cyan">{emoji} {session.name}</Text>
+        <Text bold>{emoji} {session.name}</Text>
         <Text dimColor> — </Text>
         {session.projectPath ? (
           <Hyperlink url={buildEditorUrl(session.projectPath)}>
@@ -286,8 +287,8 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
           {session.terminal.type}
           {session.terminal.id ? ` (${session.terminal.id})` : ''}
         </Text>
-        <Text dimColor> — </Text>
-        <Text color="cyan">[o] jump</Text>
+        <Text dimColor> · </Text>
+        <Text dimColor>[o] jump</Text>
         {canAct && <Text color="green"> ✓ actions</Text>}
       </Box>
 
@@ -304,7 +305,7 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
           {getCurrentPlanStep(session) && (
             <Box marginTop={1}>
               <Text dimColor>Current step: </Text>
-              <Text color="cyan">{getCurrentPlanStep(session)}</Text>
+              <Text>{getCurrentPlanStep(session)}</Text>
             </Box>
           )}
         </Box>
@@ -312,16 +313,16 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
 
       {/* Last Claude Message - context for what led to input request */}
       {session.lastStatus && session.alerting && (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="cyan" padding={1}>
-          <Text bold color="cyan">Claude said:</Text>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" padding={1}>
+          <Text bold dimColor>Claude said:</Text>
           <Text dimColor>{session.lastStatus.slice(0, 200)}{session.lastStatus.length > 200 ? '...' : ''}</Text>
         </Box>
       )}
 
       {/* Pending Message */}
       {session.pendingMessage && (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="yellow" padding={1}>
-          <Text bold color="yellow">Waiting for input:</Text>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="magenta" padding={1}>
+          <Text bold color="magenta">Waiting for input:</Text>
           <Text>{session.pendingMessage}</Text>
         </Box>
       )}
@@ -411,31 +412,26 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
   const truncatedName = session.name.slice(0, availableNameLen);
   const nameCol = `${truncatedName} ${childBadge}`.padEnd(COL_NAME);
 
-  // Alert indicator (ASCII)
-  // * = session is alerting:
-  //   - magenta: critical (permission request)
-  //   - green: casual + actionable (tmux)
-  //   - yellow: casual + view-only (non-tmux)
-  // ! = child session is alerting
+  // Alert indicator
+  // * magenta = needs attention (permission or input)
+  // * green = actionable (you can respond from Cast)
+  // ! = child session needs attention
   let alertChar = ' ';
   let alertColor: string | undefined;
   if (session.alerting) {
     alertChar = '*';
-    if (session.attentionType === 'critical') {
-      alertColor = 'magenta';  // Critical: permission/approval needed
-    } else {
-      alertColor = canAct ? 'green' : 'yellow';  // Casual: green if actionable
-    }
+    // Show green for permission requests (critical), magenta for casual input
+    alertColor = session.attentionType === 'critical' ? 'green' : 'magenta';
   } else if (aggStatus.alertingChildCount > 0) {
     alertChar = '!';
-    alertColor = 'yellow';
+    alertColor = 'magenta';
   }
 
   return (
     <Box flexDirection="row" paddingX={1}>
       {/* Tree column */}
       <Box width={COL_TREE}>
-        <Text color={selected ? 'cyan' : undefined} bold={selected}>{treeCol}</Text>
+        <Text color={selected ? 'white' : 'gray'} bold={selected}>{treeCol}</Text>
       </Box>
 
       {/* Emoji column - fixed 2 chars */}
@@ -445,7 +441,7 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
 
       {/* Name column */}
       <Box width={COL_NAME}>
-        <Text color={aggStatus.alerting ? 'yellow' : undefined} bold={aggStatus.alerting}>
+        <Text color={aggStatus.alerting ? 'magenta' : undefined} bold={aggStatus.alerting}>
           {nameCol}
         </Text>
       </Box>
@@ -467,7 +463,7 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
 
       {/* Progress column */}
       <Box width={COL_PROGRESS}>
-        <Text color={progress ? 'cyan' : 'gray'}>{progress.padEnd(COL_PROGRESS) || '—'.padEnd(COL_PROGRESS)}</Text>
+        <Text color={progress ? 'white' : 'gray'}>{progress.padEnd(COL_PROGRESS) || '—'.padEnd(COL_PROGRESS)}</Text>
       </Box>
 
       <Text color="gray">│</Text>
@@ -597,14 +593,14 @@ interface KanbanColumnDef {
 }
 
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  { id: 'attention', title: 'Needs You', emoji: '👋', color: 'yellow', statuses: ['needs_input', 'error'] },
-  { id: 'working', title: 'Busy', emoji: '⚡', color: 'blue', statuses: ['working'] },
+  { id: 'attention', title: 'Needs You', emoji: '👋', color: 'magenta', statuses: ['needs_input', 'error'] },
+  { id: 'working', title: 'Busy', emoji: '⚡', color: 'blueBright', statuses: ['working'] },
   { id: 'idle', title: 'Chilling', emoji: '😴', color: 'gray', statuses: ['idle', 'completed'] },
 ];
 
 function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession; selected: boolean; isSubagent: boolean }) {
   const emoji = getSessionEmoji(session.name);
-  const borderColor = selected ? 'cyan' : (session.alerting ? 'yellow' : 'gray');
+  const borderColor = selected ? 'white' : (session.alerting ? 'magenta' : 'gray');
   const canAct = canSendInput(session);
 
   return (
@@ -621,13 +617,13 @@ function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession;
         <Text dimColor>↳ subtask</Text>
       )}
       <Box>
-        <Text bold={selected || session.alerting} color={session.alerting ? 'yellow' : undefined}>
+        <Text bold={selected || session.alerting} color={session.alerting ? 'magenta' : undefined}>
           {emoji} {session.name.slice(0, 16)}
         </Text>
         {canAct && session.alerting && <Text color="green"> ⚡</Text>}
       </Box>
       {session.status === 'working' ? (
-        <Text color="blue" dimColor>
+        <Text color="blueBright" dimColor>
           <Spinner type="dots" /> {getStatusVerb(session.status, session.id)}
         </Text>
       ) : (
@@ -714,20 +710,21 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
     return () => clearInterval(interval);
   }, []);
 
-  const titleColors = ['cyan', 'cyanBright', 'cyan'] as const;
+  // Subtle animation - white to gray, not flashy colors
+  const titleColors = ['white', 'gray', 'white'] as const;
   const titleColor = titleColors[tick % titleColors.length];
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box borderStyle="round" borderColor={titleColor} paddingX={2}>
+      <Box borderStyle="round" borderColor="gray" paddingX={2}>
         <Text bold color={titleColor}>🦀 Cast</Text>
         {serverPort && <Text dimColor> (:{serverPort})</Text>}
         <Text>  </Text>
-        <Text color={view === 'list' ? 'cyan' : 'gray'} bold={view === 'list'}>[l]ist</Text>
+        <Text color={view === 'list' ? 'white' : 'gray'} bold={view === 'list'}>[l]ist</Text>
         <Text> </Text>
-        <Text color={view === 'kanban' ? 'cyan' : 'gray'} bold={view === 'kanban'}>[k]anban</Text>
+        <Text color={view === 'kanban' ? 'white' : 'gray'} bold={view === 'kanban'}>[k]anban</Text>
         <Text>  </Text>
-        <Text color={showCompleted ? 'green' : 'gray'} bold={showCompleted}>[c]ompleted {showCompleted ? '✓' : '○'}</Text>
+        <Text color={showCompleted ? 'white' : 'gray'} bold={showCompleted}>[c]ompleted {showCompleted ? '✓' : '○'}</Text>
       </Box>
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
@@ -736,13 +733,12 @@ function Header({ serverPort, view, showCompleted }: { serverPort?: number; view
       </Box>
       <Box paddingX={1}>
         <Text dimColor>Alert: </Text>
-        <Text color="magenta">*</Text><Text dimColor>=permission </Text>
+        <Text color="magenta">*</Text><Text dimColor>=needs you </Text>
         <Text color="green">*</Text><Text dimColor>=actionable </Text>
-        <Text color="yellow">*</Text><Text dimColor>=view-only </Text>
         <Text dimColor>│ In detail: </Text>
         <Text color="green">y</Text><Text dimColor>/</Text>
         <Text color="red">n</Text><Text dimColor>/</Text>
-        <Text color="blue">r</Text>
+        <Text color="blueBright">r</Text>
       </Box>
     </Box>
   );
@@ -773,13 +769,13 @@ function StatusBar({ sessions }: { sessions: ClaudeSession[] }) {
   return (
     <Box marginTop={1} paddingX={1}>
       <Text>
-        <Text color="cyan">{rootSessions.length}</Text> session{rootSessions.length !== 1 ? 's' : ''}
+        <Text bold>{rootSessions.length}</Text> session{rootSessions.length !== 1 ? 's' : ''}
         {workingRoots > 0 && (
-          <Text color="yellow"> ({workingRoots} working)</Text>
+          <Text color="blueBright"> ({workingRoots} working)</Text>
         )}
         {subagents.length > 0 && (
           <Text dimColor>
-            {' • '}<Text color="blue">{activeSubagents.length}</Text> active
+            {' • '}<Text color="blueBright">{activeSubagents.length}</Text> active
             {completedSubagents.length > 0 && <Text> / <Text color="gray">{completedSubagents.length}</Text> done</Text>}
             {' subtask'}{subagents.length !== 1 ? 's' : ''}
           </Text>
@@ -811,7 +807,7 @@ function EmptyState() {
       </Box>
       <Box marginTop={1}>
         <Text dimColor>
-          Run <Text color="cyan">csm install-hooks</Text> for setup.
+          Run <Text bold>csm install-hooks</Text> for setup.
         </Text>
       </Box>
     </Box>
@@ -1032,7 +1028,7 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
 
       {statusMessage && (
         <Box paddingX={1}>
-          <Text color="cyan">{statusMessage}</Text>
+          <Text dimColor>{statusMessage}</Text>
         </Box>
       )}
 
