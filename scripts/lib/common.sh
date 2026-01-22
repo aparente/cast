@@ -218,9 +218,10 @@ get_last_assistant_message() {
     return
   fi
 
-  # Convert CWD to Claude's project path format (slashes become dashes)
+  # Convert CWD to Claude's project path format
+  # Claude replaces both / and _ with - in the path encoding
   local project_dir
-  project_dir=$(echo "$cwd" | sed 's|^/||' | sed 's|/|-|g')
+  project_dir=$(echo "$cwd" | sed 's|^/||' | sed 's|/|-|g' | sed 's|_|-|g')
   local transcript_path="$HOME/.claude/projects/-$project_dir/$session_id.jsonl"
 
   if [ ! -f "$transcript_path" ]; then
@@ -228,16 +229,19 @@ get_last_assistant_message() {
     return
   fi
 
-  # Get last assistant message text (first text block, first 100 chars)
-  local last_msg
-  last_msg=$(grep '"type":"assistant"' "$transcript_path" 2>/dev/null | \
-    tail -1 | \
-    jq -r '.message.content[] | select(.type=="text") | .text' 2>/dev/null | \
-    head -1 | \
-    head -c 100 | \
-    tr '\n' ' ' | \
-    sed 's/^[[:space:]]*//' | \
-    sed 's/[[:space:]]*$//')
+  # Get last assistant message that has text content (not just tool_use)
+  # Read file backwards (tac) and find first assistant message with text
+  local last_msg=""
+  while IFS= read -r line; do
+    if echo "$line" | grep -q '"type":"assistant"'; then
+      local text
+      text=$(echo "$line" | jq -r '.message.content[] | select(.type=="text") | .text' 2>/dev/null | head -1)
+      if [ -n "$text" ]; then
+        last_msg=$(echo "$text" | head -c 100 | tr '\n' ' ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        break
+      fi
+    fi
+  done < <(tail -r "$transcript_path" 2>/dev/null)
 
   # Truncate at sentence boundary if possible
   if [ ${#last_msg} -gt 50 ]; then
