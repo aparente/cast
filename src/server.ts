@@ -276,6 +276,53 @@ async function focusTerminal(session: ClaudeSession): Promise<{ success: boolean
 }
 
 /**
+ * Detect terminal type by checking process ancestry
+ * Returns 'tmux', 'vscode', or 'unknown'
+ */
+async function detectTerminalType(pid: string): Promise<{ type: TerminalType; id: string }> {
+  try {
+    // Get parent PID
+    const ppidProc = Bun.spawn(['ps', '-p', pid, '-o', 'ppid='], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const ppid = (await new Response(ppidProc.stdout).text()).trim();
+
+    // Get grandparent PID and check ancestors for tmux/vscode
+    const gpidProc = Bun.spawn(['ps', '-p', ppid, '-o', 'ppid='], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const gpid = (await new Response(gpidProc.stdout).text()).trim();
+
+    const gpCmdProc = Bun.spawn(['ps', '-p', gpid, '-o', 'comm='], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const gpCmd = (await new Response(gpCmdProc.stdout).text()).trim().toLowerCase();
+
+    if (gpCmd.includes('tmux')) {
+      // Try to find the tmux pane target
+      // The shell's TTY can help identify the pane
+      const ttyProc = Bun.spawn(['ps', '-p', ppid, '-o', 'tty='], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const tty = (await new Response(ttyProc.stdout).text()).trim();
+      return { type: 'tmux', id: tty || '' };
+    }
+
+    if (gpCmd.includes('cursor') || gpCmd.includes('code')) {
+      return { type: 'vscode', id: '' };
+    }
+
+    return { type: 'unknown', id: '' };
+  } catch {
+    return { type: 'unknown', id: '' };
+  }
+}
+
+/**
  * Discover existing Claude Code processes that started before Cast
  * Creates "pending" sessions that will be upgraded when hooks arrive
  */
@@ -318,6 +365,9 @@ async function discoverExistingSessions(): Promise<number> {
           continue;
         }
 
+        // Detect terminal type from process ancestry
+        const terminal = await detectTerminalType(pid);
+
         // Create a pending session
         const sessionId = `discovered-${pid}`;
         const sessionName = deriveSessionName(cwd);
@@ -328,13 +378,13 @@ async function discoverExistingSessions(): Promise<number> {
           status: 'pending',
           alerting: false,
           terminal: {
-            type: 'unknown',
-            id: '',
+            type: terminal.type,
+            id: terminal.id,
             shellPid: parseInt(pid, 10),
           },
         });
 
-        debugLog('DISCOVER', `Created pending session for ${cwd}`, { pid, sessionId });
+        debugLog('DISCOVER', `Created pending session for ${cwd}`, { pid, sessionId, terminalType: terminal.type });
         discovered++;
       } catch (err) {
         debugLog('DISCOVER', `Error processing PID ${pid}: ${err}`);
