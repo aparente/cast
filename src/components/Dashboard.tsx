@@ -20,7 +20,7 @@ export const COLORS = {
   accent: 'whiteBright',
 
   // Status colors
-  pending: 'yellow',            // Discovered, awaiting hooks
+  pending: 'magenta',           // Discovered, awaiting hooks
   idle: 'gray',
   working: 'cyanBright',        // Blue for active work
   needs_input: 'whiteBright',   // Bold white for attention
