@@ -248,6 +248,16 @@ class SessionStore {
   }
 
   /**
+   * Find a pending (discovered) session by project path for merging
+   * Returns the first pending session with matching projectPath, if any
+   */
+  findPendingByPath(projectPath: string): ClaudeSession | undefined {
+    return this.all().find(s =>
+      s.status === 'pending' && s.projectPath === projectPath
+    );
+  }
+
+  /**
    * Clear pending message for a session
    */
   clearPending(sessionId: string): void {

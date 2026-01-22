@@ -276,6 +276,79 @@ async function focusTerminal(session: ClaudeSession): Promise<{ success: boolean
 }
 
 /**
+ * Discover existing Claude Code processes that started before Cast
+ * Creates "pending" sessions that will be upgraded when hooks arrive
+ */
+async function discoverExistingSessions(): Promise<number> {
+  try {
+    // Find all Claude PIDs
+    const pgrepProc = Bun.spawn(['pgrep', '-x', 'claude'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const pgrepOut = await new Response(pgrepProc.stdout).text();
+    const pids = pgrepOut.trim().split('\n').filter(Boolean);
+
+    if (pids.length === 0) {
+      debugLog('DISCOVER', 'No Claude processes found');
+      return 0;
+    }
+
+    let discovered = 0;
+    for (const pid of pids) {
+      try {
+        // Get working directory via lsof
+        const lsofProc = Bun.spawn(['lsof', '-p', pid], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const lsofOut = await new Response(lsofProc.stdout).text();
+        const cwdLine = lsofOut.split('\n').find(line => line.includes(' cwd '));
+        const cwd = cwdLine?.split(/\s+/).pop()?.trim();
+
+        if (!cwd) {
+          debugLog('DISCOVER', `Could not get cwd for PID ${pid}`);
+          continue;
+        }
+
+        // Check if we already have a session for this path
+        const existingByPath = sessionStore.all().find(s => s.projectPath === cwd);
+        if (existingByPath) {
+          debugLog('DISCOVER', `Session already exists for ${cwd}`, { id: existingByPath.id });
+          continue;
+        }
+
+        // Create a pending session
+        const sessionId = `discovered-${pid}`;
+        const sessionName = deriveSessionName(cwd);
+
+        sessionStore.upsert(sessionId, {
+          name: sessionName,
+          projectPath: cwd,
+          status: 'pending',
+          alerting: false,
+          terminal: {
+            type: 'unknown',
+            id: '',
+            shellPid: parseInt(pid, 10),
+          },
+        });
+
+        debugLog('DISCOVER', `Created pending session for ${cwd}`, { pid, sessionId });
+        discovered++;
+      } catch (err) {
+        debugLog('DISCOVER', `Error processing PID ${pid}: ${err}`);
+      }
+    }
+
+    return discovered;
+  } catch (err) {
+    debugLog('DISCOVER', `Discovery failed: ${err}`);
+    return 0;
+  }
+}
+
+/**
  * Handle incoming hook events
  */
 function handleHookEvent(event: HookEvent): { success: boolean; message: string } {
@@ -293,6 +366,15 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
     case 'session_start': {
       // Use project_name from hook if available, otherwise derive from cwd
       const sessionName = event.project_name || deriveSessionName(cwd);
+
+      // Check if there's a pending (discovered) session for this path to merge
+      const pendingSession = cwd ? sessionStore.findPendingByPath(cwd) : undefined;
+      if (pendingSession) {
+        // Remove the pending session, it's being upgraded
+        sessionStore.remove(pendingSession.id);
+        debugLog('MERGE', `Merged pending session ${pendingSession.id} -> ${session_id}`, { cwd });
+      }
+
       sessionStore.upsert(session_id, {
         name: sessionName,
         projectPath: cwd,
@@ -636,10 +718,17 @@ export function startServer(port: number = DEFAULT_PORT): { port: number; stop: 
   const actualPort = server.port ?? port;
   console.log(`Session manager server running on http://localhost:${actualPort}`);
 
+  // Discover existing Claude processes on startup
+  discoverExistingSessions().then(count => {
+    if (count > 0) {
+      console.log(`Discovered ${count} existing Claude session(s)`);
+    }
+  });
+
   return {
     port: actualPort,
     stop: () => server.stop(),
   };
 }
 
-export { DEFAULT_PORT };
+export { DEFAULT_PORT, discoverExistingSessions };

@@ -2,6 +2,7 @@
  * Represents the status of a Claude Code session
  */
 export type SessionStatus =
+  | 'pending'        // Discovered process, status unknown (no hooks yet)
   | 'idle'           // Waiting, no active work
   | 'working'        // Claude is processing/generating
   | 'needs_input'    // Waiting for user input/approval
@@ -127,7 +128,8 @@ export const STATUS_PRIORITY: Record<SessionStatus, number> = {
   error: 1,
   working: 2,
   idle: 3,
-  completed: 4,
+  pending: 4,    // Discovered but no hooks yet
+  completed: 5,
 };
 
 /**

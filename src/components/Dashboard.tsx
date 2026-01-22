@@ -20,6 +20,7 @@ export const COLORS = {
   accent: 'whiteBright',
 
   // Status colors
+  pending: 'yellow',            // Discovered, awaiting hooks
   idle: 'gray',
   working: 'cyanBright',        // Blue for active work
   needs_input: 'whiteBright',   // Bold white for attention
@@ -37,6 +38,7 @@ export const COLORS = {
 
 // Status colors mapped
 export const STATUS_COLORS: Record<SessionStatus, string> = {
+  pending: COLORS.pending,
   idle: COLORS.idle,
   working: COLORS.working,
   needs_input: COLORS.needs_input,
@@ -50,6 +52,7 @@ export const STATUS_COLORS: Record<SessionStatus, string> = {
 
 export const SYMBOLS = {
   // Status indicators
+  statusPending: '○',    // Circle - pending/discovered
   statusIdle: '◇',       // Empty diamond - idle
   statusWorking: '◈',    // Filled diamond - working
   statusAlert: '◆',      // Solid diamond - needs attention
@@ -112,6 +115,7 @@ export const CAST_LOGO_MINI = '▓▒░ CAST ░▒▓';
 // ─────────────────────────────────────────────────────────────
 
 export const STATUS_LABELS: Record<SessionStatus, string[]> = {
+  pending: ['pending', 'detected', 'found', 'spotted', 'syncing'],
   idle: ['idle', 'chill', 'zen', 'quiet', 'paused'],
   working: ['busy', 'active', 'grinding', 'cooking', 'hacking'],
   needs_input: ['waiting', 'blocked', 'needs you', 'alert', 'stuck'],
@@ -128,6 +132,7 @@ export function getStatusLabel(status: SessionStatus, sessionId: string): string
 export function getStatusSymbol(status: SessionStatus, alerting: boolean): string {
   if (alerting) return SYMBOLS.statusAlert;
   switch (status) {
+    case 'pending': return SYMBOLS.statusPending;
     case 'idle': return SYMBOLS.statusIdle;
     case 'working': return SYMBOLS.statusWorking;
     case 'needs_input': return SYMBOLS.statusAlert;
@@ -699,7 +704,7 @@ interface KanbanColumnDef {
 export const KANBAN_COLUMNS: KanbanColumnDef[] = [
   { id: 'attention', title: 'NEEDS YOU', symbol: SYMBOLS.statusAlert, color: COLORS.accent, statuses: ['needs_input', 'error'] },
   { id: 'working', title: 'WORKING', symbol: SYMBOLS.statusWorking, color: COLORS.working, statuses: ['working'] },
-  { id: 'idle', title: 'IDLE', symbol: SYMBOLS.statusIdle, color: COLORS.idle, statuses: ['idle', 'completed'] },
+  { id: 'idle', title: 'IDLE', symbol: SYMBOLS.statusIdle, color: COLORS.idle, statuses: ['idle', 'completed', 'pending'] },
 ];
 
 function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession; selected: boolean; isSubagent: boolean }) {
