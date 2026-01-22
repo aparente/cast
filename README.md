@@ -7,12 +7,13 @@ A terminal UI (TUI) for managing your cast of Claude Code sessions. See which se
 ## Features
 
 - **Real-time session tracking** — All active Claude Code sessions in one dashboard
+- **Process discovery** — Detects existing Claude sessions on startup (even without hooks)
 - **Smart session names** — Auto-detects project name from package.json, git remote, or directory
 - **Progress tracking** — Shows task progress (X/Y completed) from Claude's TodoWrite tool
 - **Status descriptions** — See what Claude is currently doing via transcript parsing
 - **Subagent tree view** — See Task subagents as children of parent sessions with expandable rows
 - **Status bubbling** — If any subagent needs input, parent session shows alert indicator
-- **Alert highlighting** — Sessions needing input bubble to the top with ⚡ indicators
+- **Alert highlighting** — Sessions needing input bubble to the top with flashing green indicators
 - **List & Kanban views** — Toggle between views with `l` and `k` keys
 - **Quick actions** — Approve/deny/respond directly from dashboard (tmux sessions)
 - **SQLite persistence** — Sessions survive dashboard restarts
@@ -197,6 +198,17 @@ Cast automatically filters out sessions from plugin-spawned directories to keep 
 
 These background sessions are silently ignored and won't appear in the dashboard.
 
+### Process Discovery
+
+Cast can detect Claude Code sessions that started **before** the dashboard, even without hooks:
+
+1. On startup, scans for running `claude` processes via `pgrep`
+2. Gets each process's working directory via `lsof`
+3. Detects terminal type (tmux/vscode) from process ancestry
+4. Creates "pending" sessions (shown in magenta with ○ symbol)
+
+When a pending session sends its first hook event, it automatically merges with the real session data. This means you get visibility into all running Claudes immediately, with full tracking once they interact.
+
 ## Configuration
 
 ### Environment Variables
@@ -251,6 +263,8 @@ Inspired by the "design delight" of Claude Code itself:
 - [x] Smart session naming (package.json, git, directory)
 - [x] Transcript parsing for status descriptions
 - [x] Quick actions for tmux sessions
+- [x] Process discovery for pre-existing sessions
+- [x] Terminal type detection from process ancestry
 - [ ] VS Code extension for quick actions
 - [ ] iTerm2 AppleScript integration
 - [ ] Sound/visual alerts integration
