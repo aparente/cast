@@ -570,7 +570,9 @@ function SessionRow({ session, selected, depth = 0, hasChildren = false, expande
             <Spinner type="dots" /> {statusLabel.slice(0, COL.STATUS - 3)}
           </Text>
         ) : (
-          <Text color={color}>{statusLabel.slice(0, COL.STATUS)}</Text>
+          <Text color={session.attentionType === 'critical' ? COLORS.success : color}>
+            {statusLabel.slice(0, COL.STATUS)}
+          </Text>
         )}
       </Box>
 
@@ -737,7 +739,9 @@ function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession;
             <Spinner type="dots" /> {getStatusLabel(session.status, session.id)}
           </Text>
         ) : (
-          <Text dimColor>{getStatusLabel(session.status, session.id)}</Text>
+          <Text color={session.attentionType === 'critical' ? COLORS.success : undefined} dimColor={session.attentionType !== 'critical'}>
+            {getStatusLabel(session.status, session.id)}
+          </Text>
         )}
       </Box>
       {progress && (
