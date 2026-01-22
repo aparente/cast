@@ -7,24 +7,166 @@ import { DEFAULT_PORT } from '../server.js';
 import type { ClaudeSession, ViewMode, SessionStatus, QuickActionType, AggregatedStatus, AttentionType } from '../types.js';
 import { canSendInput } from '../types.js';
 
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ CYBERPUNK TERMINAL DESIGN SYSTEM ▓▓▓
+// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// COLOR PALETTE - Cyberpunk: magenta/cyan on dark
+// ─────────────────────────────────────────────────────────────
+
+export const COLORS = {
+  // Accent for attention - bold white stands out without being garish
+  accent: 'whiteBright',
+
+  // Status colors
+  idle: 'gray',
+  working: 'cyanBright',        // Blue for active work
+  needs_input: 'whiteBright',   // Bold white for attention
+  error: 'red',
+  completed: 'gray',
+
+  // UI elements
+  border: 'gray',
+  borderFocus: 'cyanBright',
+  text: 'white',
+  textDim: 'gray',
+  success: 'green',
+  warning: 'red',
+} as const;
+
+// Status colors mapped
+export const STATUS_COLORS: Record<SessionStatus, string> = {
+  idle: COLORS.idle,
+  working: COLORS.working,
+  needs_input: COLORS.needs_input,
+  error: COLORS.error,
+  completed: COLORS.completed,
+};
+
+// ─────────────────────────────────────────────────────────────
+// UNICODE SYMBOLS & DECORATIONS
+// ─────────────────────────────────────────────────────────────
+
+export const SYMBOLS = {
+  // Status indicators
+  statusIdle: '◇',       // Empty diamond - idle
+  statusWorking: '◈',    // Filled diamond - working
+  statusAlert: '◆',      // Solid diamond - needs attention
+  statusError: '✖',      // X mark - error
+  statusDone: '◇',       // Empty - completed
+
+  // Tree navigation
+  treeBranch: '├─',
+  treeLast: '└─',
+  treeVert: '│ ',
+  treeExpand: '▸',       // Collapsed
+  treeCollapse: '▾',     // Expanded
+
+  // Selection & action
+  selected: '▶',
+  bullet: '›',
+  actionable: '⚡',
+
+  // Progress
+  progressFull: '█',
+  progressHalf: '▓',
+  progressEmpty: '░',
+
+  // Sparkline characters (for mini activity graphs)
+  spark: ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'],
+
+  // Separators
+  dividerLight: '─',
+  dividerHeavy: '━',
+  dividerDouble: '═',
+
+  // Corners (heavy)
+  cornerTL: '┏',
+  cornerTR: '┓',
+  cornerBL: '┗',
+  cornerBR: '┛',
+
+  // Corners (rounded)
+  roundTL: '╭',
+  roundTR: '╮',
+  roundBL: '╰',
+  roundBR: '╯',
+} as const;
+
+// ─────────────────────────────────────────────────────────────
+// ASCII ART HEADER
+// ─────────────────────────────────────────────────────────────
+
+export const CAST_LOGO = [
+  '╔═══╗ ╔═══╗ ╔═══╗ ╔════╗',
+  '║ ╔═╝ ║ ╔═╣ ║ ══╣ ╚═╗╔═╝',
+  '║ ╚═╗ ║ ╚═╣ ╠══ ║   ║║  ',
+  '╚═══╝ ╚═══╝ ╚═══╝   ╚╝  ',
+];
+
+export const CAST_LOGO_MINI = '▓▒░ CAST ░▒▓';
+
+// ─────────────────────────────────────────────────────────────
+// STATUS VOCABULARY (playful but terse)
+// ─────────────────────────────────────────────────────────────
+
+export const STATUS_LABELS: Record<SessionStatus, string[]> = {
+  idle: ['idle', 'chill', 'zen', 'quiet', 'paused'],
+  working: ['busy', 'active', 'grinding', 'cooking', 'hacking'],
+  needs_input: ['waiting', 'blocked', 'needs you', 'alert', 'stuck'],
+  error: ['error', 'failed', 'crashed', 'oops', 'broken'],
+  completed: ['done', 'finished', 'complete', '✓', 'shipped'],
+};
+
+export function getStatusLabel(status: SessionStatus, sessionId: string): string {
+  const labels = STATUS_LABELS[status];
+  const index = sessionId.charCodeAt(0) % labels.length;
+  return labels[index] ?? labels[0] ?? status;
+}
+
+export function getStatusSymbol(status: SessionStatus, alerting: boolean): string {
+  if (alerting) return SYMBOLS.statusAlert;
+  switch (status) {
+    case 'idle': return SYMBOLS.statusIdle;
+    case 'working': return SYMBOLS.statusWorking;
+    case 'needs_input': return SYMBOLS.statusAlert;
+    case 'error': return SYMBOLS.statusError;
+    case 'completed': return SYMBOLS.statusDone;
+    default: return SYMBOLS.statusIdle;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SESSION EMOJI (context-aware)
+// ─────────────────────────────────────────────────────────────
+
+export function getSessionEmoji(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes('bio') || lower.includes('lab') || lower.includes('health')) return '🧬';
+  if (lower.includes('grant') || lower.includes('money') || lower.includes('finance')) return '💰';
+  if (lower.includes('web') || lower.includes('site') || lower.includes('frontend')) return '🌐';
+  if (lower.includes('api') || lower.includes('server') || lower.includes('backend')) return '⚡';
+  if (lower.includes('test') || lower.includes('spec')) return '🧪';
+  if (lower.includes('doc') || lower.includes('readme')) return '📝';
+  if (lower.includes('data') || lower.includes('scrape')) return '📊';
+  if (lower.includes('ai') || lower.includes('ml') || lower.includes('claude')) return '🤖';
+  if (lower.includes('cast') || lower.includes('session')) return '🦀';
+  const creatures = ['🦀', '🐙', '🦑', '🐡', '🦐', '🦞'] as const;
+  return creatures[name.length % creatures.length] ?? '🦀';
+}
+
 // ─────────────────────────────────────────────────────────────
 // HYPERLINK SUPPORT (OSC8)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Get the editor command from environment
- */
 function getEditorCommand(): string {
   const editor = process.env.EDITOR || '';
   if (editor.includes('cursor')) return 'cursor';
   if (editor.includes('code') || editor.includes('Code')) return 'code';
-  // Fallback chain
   return 'cursor';
 }
 
-/**
- * Build a URL that opens the path in the editor
- */
 function buildEditorUrl(path: string): string {
   const editor = getEditorCommand();
   if (editor === 'code') return `vscode://file${path}`;
@@ -32,11 +174,7 @@ function buildEditorUrl(path: string): string {
   return `file://${path}`;
 }
 
-/**
- * OSC8 hyperlink component - makes text clickable in supporting terminals
- */
 function Hyperlink({ url, children }: { url: string; children: React.ReactNode }) {
-  // OSC 8 format: \x1b]8;;URL\x07TEXT\x1b]8;;\x07
   const start = `\x1b]8;;${url}\x07`;
   const end = `\x1b]8;;\x07`;
   return <Text>{start}{children}{end}</Text>;
@@ -47,126 +185,52 @@ interface DashboardProps {
   serverPort?: number;
 }
 
-// Playful status vocabulary
-const STATUS_VERBS: Record<SessionStatus, string[]> = {
-  idle: ['Chilling', 'Lounging', 'Daydreaming', 'Napping', 'Pondering'],
-  working: ['Cooking', 'Scheming', 'Tinkering', 'Brewing', 'Crafting'],
-  needs_input: ['Waiting', 'Stuck!', 'Your turn', 'Paging you', '👀'],
-  error: ['Confused', 'Lost', 'Oops', 'Halp'],
-  completed: ['Done!', 'Nailed it', 'Victory', '✓'],
-};
+// ─────────────────────────────────────────────────────────────
+// UTILITY FUNCTIONS
+// ─────────────────────────────────────────────────────────────
 
-function getSessionEmoji(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes('bio') || lower.includes('lab') || lower.includes('health')) return '🧬';
-  if (lower.includes('grant') || lower.includes('money') || lower.includes('finance')) return '💰';
-  if (lower.includes('web') || lower.includes('site') || lower.includes('frontend')) return '🌐';
-  if (lower.includes('api') || lower.includes('server') || lower.includes('backend')) return '⚡';
-  if (lower.includes('test') || lower.includes('spec')) return '🧪';
-  if (lower.includes('doc') || lower.includes('readme')) return '📝';
-  if (lower.includes('data') || lower.includes('scrape')) return '📊';
-  if (lower.includes('ai') || lower.includes('ml') || lower.includes('claude')) return '🤖';
-  const creatures = ['🦀', '🐙', '🦑', '🐡', '🦐', '🦞'] as const;
-  return creatures[name.length % creatures.length] ?? '🦀';
-}
-
-function getStatusVerb(status: SessionStatus, sessionId: string): string {
-  const verbs = STATUS_VERBS[status];
-  const index = sessionId.charCodeAt(0) % verbs.length;
-  return verbs[index] ?? verbs[0] ?? status;
-}
-
-// Color palette: muted base, color only for meaning
-const STATUS_COLORS: Record<SessionStatus, string> = {
-  idle: 'gray',
-  working: 'blueBright',
-  needs_input: 'magenta',
-  error: 'red',
-  completed: 'gray',
-};
-
-function getActionStatusColor(status: string): string {
-  if (status.includes('✓')) return 'green';
-  if (status.includes('✗')) return 'red';
-  return 'yellow';
-}
-
-/**
- * Get progress string from todos or plan (e.g., "2/5")
- * Prioritizes plan progress if available
- */
-function getProgress(session: ClaudeSession): string {
-  // If session has a plan with steps, show plan progress
+export function getProgress(session: ClaudeSession): { completed: number; total: number } | null {
   if (session.plan && session.plan.steps.length > 0) {
     const completed = session.plan.steps.filter(s => s.completed).length;
-    const total = session.plan.steps.length;
-    return `${completed}/${total}`;
+    return { completed, total: session.plan.steps.length };
   }
-
-  // Fall back to todo progress
-  if (!session.todos || session.todos.length === 0) return '';
-  const completed = session.todos.filter(t => t.status === 'completed').length;
-  const total = session.todos.length;
-  return `${completed}/${total}`;
+  if (session.todos && session.todos.length > 0) {
+    const completed = session.todos.filter(t => t.status === 'completed').length;
+    return { completed, total: session.todos.length };
+  }
+  return null;
 }
 
-/**
- * Get the current plan step name
- */
 function getCurrentPlanStep(session: ClaudeSession): string | null {
   if (!session.plan || session.plan.steps.length === 0) return null;
-
-  // If currentStep is set, use it
   if (session.plan.currentStep !== undefined) {
     const step = session.plan.steps[session.plan.currentStep];
     if (step) return step.title;
   }
-
-  // Otherwise find first incomplete step
   const incompleteStep = session.plan.steps.find(s => !s.completed);
   return incompleteStep?.title ?? null;
 }
 
-/**
- * Extract a completion summary from Claude's last message
- * Parses first sentence or action phrase to show what was completed
- */
-function extractCompletionSummary(lastStatus: string): string {
-  // Remove markdown formatting
+export function extractCompletionSummary(lastStatus: string): string {
   let text = lastStatus.replace(/[*_`#]/g, '').trim();
-
-  // Get first sentence (up to period, question mark, or exclamation)
   const sentenceMatch = text.match(/^([^.!?]+[.!?]?)/);
   if (sentenceMatch?.[1]) {
     text = sentenceMatch[1].trim();
   }
-
-  // Truncate if still too long (keep it concise for list view)
   if (text.length > 40) {
     text = text.slice(0, 37) + '...';
   }
-
   return text;
 }
 
-/**
- * Get the current task description (activeForm of in_progress todo)
- * Falls back to lastStatus (what Claude last said) when idle
- * Shows completion context when waiting for input
- */
-function getCurrentTask(session: ClaudeSession): string {
-  // First, check for in-progress todo
+export function getCurrentTask(session: ClaudeSession): string {
   if (session.todos) {
     const inProgress = session.todos.find(t => t.status === 'in_progress');
     if (inProgress) return inProgress.activeForm;
   }
-
-  // If working, show current tool use
   if (session.status === 'working' && session.currentTask) {
     return session.currentTask;
   }
-
-  // If waiting for input, show completion context with "waiting" suffix
   if (session.status === 'needs_input') {
     if (session.lastStatus) {
       const summary = extractCompletionSummary(session.lastStatus);
@@ -174,13 +238,48 @@ function getCurrentTask(session: ClaudeSession): string {
     }
     return session.pendingMessage || 'Waiting for input…';
   }
-
-  // If idle, show last message from transcript (what Claude said)
   if (session.lastStatus) {
     return session.lastStatus;
   }
-
   return session.currentTask || '';
+}
+
+// ─────────────────────────────────────────────────────────────
+// CUSTOM COMPONENTS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Simple progress display - just text, no bar
+ */
+function ProgressText({ completed, total }: { completed: number; total: number }) {
+  if (total === 0) return <Text dimColor>—</Text>;
+  const done = completed === total;
+  return (
+    <Text color={done ? COLORS.success : undefined} dimColor={!done}>
+      {completed}/{total}
+    </Text>
+  );
+}
+
+/**
+ * Status badge with symbol and color
+ */
+function StatusBadge({ status, alerting, showLabel = true }: { status: SessionStatus; alerting: boolean; showLabel?: boolean }) {
+  const symbol = getStatusSymbol(status, alerting);
+  const color = STATUS_COLORS[status];
+
+  return (
+    <Text color={color} bold={alerting}>
+      {symbol}{showLabel && ` ${status}`}
+    </Text>
+  );
+}
+
+/**
+ * Divider line
+ */
+function Divider({ char = '─', width = 40, color = 'gray' }: { char?: string; width?: number; color?: string }) {
+  return <Text color={color}>{char.repeat(width)}</Text>;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -201,9 +300,9 @@ async function sendAction(sessionId: string, action: QuickActionType, response?:
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// DETAIL VIEW (with quick actions)
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ DETAIL VIEW ▓▓▓
+// ═══════════════════════════════════════════════════════════════
 
 function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () => void }) {
   const [responding, setResponding] = useState(false);
@@ -211,19 +310,20 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const emoji = getSessionEmoji(session.name);
   const canAct = canSendInput(session);
+  const progress = getProgress(session);
 
   const handleAction = async (action: QuickActionType, text?: string) => {
-    setActionStatus('Sending...');
+    setActionStatus('sending...');
     const success = await sendAction(session.id, action, text);
     if (success) {
-      setActionStatus('✓ Sent!');
+      setActionStatus('✓ sent');
       if (action !== 'focus') {
         setTimeout(onClose, 500);
       } else {
         setTimeout(() => setActionStatus(null), 1500);
       }
     } else {
-      setActionStatus('✗ Failed');
+      setActionStatus('✖ failed');
     }
   };
 
@@ -242,7 +342,6 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
     if (key.escape || input === 'q') {
       onClose();
     }
-    // Jump to terminal
     if (input === 'o') {
       handleAction('focus');
     }
@@ -254,239 +353,248 @@ function DetailView({ session, onClose }: { session: ClaudeSession; onClose: () 
   });
 
   return (
-    <Box flexDirection="column" borderStyle="double" borderColor="gray" padding={1}>
-      {/* Header with clickable path */}
+    <Box flexDirection="column" borderStyle="double" borderColor={COLORS.borderFocus} paddingX={2} paddingY={1}>
+      {/* ── Header ── */}
       <Box marginBottom={1}>
-        <Text bold>{emoji} {session.name}</Text>
-        <Text dimColor> — </Text>
+        <Text bold color={COLORS.accent}>{emoji} {session.name}</Text>
+        <Text dimColor>  </Text>
         {session.projectPath ? (
           <Hyperlink url={buildEditorUrl(session.projectPath)}>
             <Text dimColor underline>{session.projectPath}</Text>
           </Hyperlink>
         ) : (
-          <Text dimColor>—</Text>
+          <Text dimColor>no project path</Text>
         )}
       </Box>
 
-      {/* Status */}
-      <Box marginBottom={1}>
-        <Text>Status: </Text>
-        <Text color={STATUS_COLORS[session.status]} bold>
-          {session.status === 'working' ? <><Spinner type="dots" /> </> : null}
-          {getStatusVerb(session.status, session.id)}
-        </Text>
-        {session.attentionType === 'critical' && (
-          <Text color="magenta" bold> (permission required)</Text>
-        )}
+      <Divider char="─" width={50} />
+
+      {/* ── Status Row ── */}
+      <Box marginY={1}>
+        <Box width={20}>
+          <Text dimColor>status </Text>
+          <StatusBadge status={session.status} alerting={session.alerting} />
+        </Box>
+        <Box width={20}>
+          <Text dimColor>terminal </Text>
+          <Text color={canAct ? COLORS.success : COLORS.textDim}>
+            {session.terminal.type}
+            {session.terminal.id ? ` (${session.terminal.id.slice(0, 8)})` : ''}
+          </Text>
+        </Box>
+        {canAct && <Text color={COLORS.success}>{SYMBOLS.actionable} actions</Text>}
       </Box>
 
-      {/* Terminal Info with jump hint */}
-      <Box marginBottom={1}>
-        <Text dimColor>Terminal: </Text>
-        <Text color={canAct ? 'green' : 'gray'}>
-          {session.terminal.type}
-          {session.terminal.id ? ` (${session.terminal.id})` : ''}
-        </Text>
-        <Text dimColor> · </Text>
-        <Text dimColor>[o] jump</Text>
-        {canAct && <Text color="green"> ✓ actions</Text>}
-      </Box>
+      {/* ── Progress ── */}
+      {progress && (
+        <Box marginBottom={1}>
+          <Text dimColor>progress </Text>
+          <ProgressText completed={progress.completed} total={progress.total} />
+        </Box>
+      )}
 
-      {/* Plan Context */}
+      {/* ── Plan Context ── */}
       {session.plan && (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="blue" padding={1}>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor={COLORS.working} paddingX={1}>
           <Box>
-            <Text bold color="blue">📋 Plan: </Text>
-            <Text>{session.plan.name}</Text>
+            <Text bold color={COLORS.working}>◈ {session.plan.name}</Text>
             {session.plan.steps.length > 0 && (
               <Text dimColor> ({session.plan.steps.filter(s => s.completed).length}/{session.plan.steps.length})</Text>
             )}
           </Box>
           {getCurrentPlanStep(session) && (
             <Box marginTop={1}>
-              <Text dimColor>Current step: </Text>
+              <Text dimColor>{SYMBOLS.bullet} </Text>
               <Text>{getCurrentPlanStep(session)}</Text>
             </Box>
           )}
         </Box>
       )}
 
-      {/* Last Claude Message - context for what led to input request */}
+      {/* ── Claude's Last Message ── */}
       {session.lastStatus && session.alerting && (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="gray" padding={1}>
-          <Text bold dimColor>Claude said:</Text>
+        <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor={COLORS.textDim} paddingX={1}>
+          <Text bold dimColor>claude said:</Text>
           <Text dimColor>{session.lastStatus.slice(0, 200)}{session.lastStatus.length > 200 ? '...' : ''}</Text>
         </Box>
       )}
 
-      {/* Pending Message */}
+      {/* ── Pending Message ── */}
       {session.pendingMessage && (
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor="magenta" padding={1}>
-          <Text bold color="magenta">Waiting for input:</Text>
+        <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor={COLORS.accent} paddingX={1}>
+          <Text bold color={COLORS.accent}>◆ waiting for input:</Text>
           <Text>{session.pendingMessage}</Text>
         </Box>
       )}
 
-      {/* Quick Actions */}
+      {/* ── Quick Actions ── */}
       {canAct && session.alerting && !responding && (
         <Box marginTop={1}>
-          <Text bold>Quick Actions: </Text>
-          <Text color="green">[y] Approve </Text>
-          <Text color="red">[n] Deny </Text>
-          <Text color="blue">[r] Respond </Text>
+          <Text bold dimColor>actions: </Text>
+          <Text color={COLORS.success}>[y] approve </Text>
+          <Text color={COLORS.error}>[n] deny </Text>
+          <Text color={COLORS.working}>[r] respond </Text>
         </Box>
       )}
 
-      {/* Response Input */}
+      {/* ── Response Input ── */}
       {responding && (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold color="blue">Type response (Enter to send, Esc to cancel):</Text>
-          <Box borderStyle="single" borderColor="blue" paddingX={1}>
+          <Text bold color={COLORS.working}>response (enter to send, esc to cancel):</Text>
+          <Box borderStyle="single" borderColor={COLORS.working} paddingX={1}>
             <TextInput
               value={responseText}
               onChange={setResponseText}
-              placeholder="Your response..."
+              placeholder="type here..."
             />
           </Box>
         </Box>
       )}
 
-      {/* Action Status */}
+      {/* ── Action Status ── */}
       {actionStatus && (
         <Box marginTop={1}>
-          <Text color={getActionStatusColor(actionStatus)}>
+          <Text color={actionStatus.includes('✓') ? COLORS.success : actionStatus.includes('✖') ? COLORS.error : COLORS.warning}>
             {actionStatus}
           </Text>
         </Box>
       )}
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <Box marginTop={1}>
-        <Text dimColor>[Esc] Back to list</Text>
+        <Text dimColor>[esc] back  [o] jump to terminal</Text>
       </Box>
     </Box>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// LIST VIEW WITH TREE SUPPORT
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ LIST VIEW ▓▓▓
+// ═══════════════════════════════════════════════════════════════
+
+// Fixed column widths - minimal, efficient
+export const COL = {
+  TREE: 4,
+  EMOJI: 3,
+  NAME: 24,
+  STATUS: 12,
+  PROGRESS: 8,   // Fits "PROGRESS" header and "11/11"
+  ALERT: 2,
+  TASK: 50,
+} as const;
 
 interface SessionRowProps {
   session: ClaudeSession;
   selected: boolean;
-  depth?: number;           // Indentation level for tree
-  hasChildren?: boolean;    // Does this session have subagents?
-  expanded?: boolean;       // Is the tree expanded?
-  aggregatedStatus?: AggregatedStatus;  // For status bubbling
+  depth?: number;
+  hasChildren?: boolean;
+  expanded?: boolean;
+  aggregatedStatus?: AggregatedStatus;
 }
-
-// Fixed column widths for alignment (using ASCII only for reliable width)
-const COL_TREE = 6;      // Tree prefix (selection + indent + icon)
-const COL_EMOJI = 2;     // Emoji (separate to avoid width issues)
-const COL_NAME = 18;     // Session name including child count
-const COL_VIBE = 10;     // Status verb (playful)
-const COL_PROGRESS = 5;  // Task progress (e.g., "2/5")
-const COL_ALERT = 2;     // Alert indicator (padded)
-const COL_TASK = 25;     // Current task (truncated)
 
 function SessionRow({ session, selected, depth = 0, hasChildren = false, expanded = true, aggregatedStatus }: SessionRowProps) {
   const aggStatus = aggregatedStatus || sessionStore.getAggregatedStatus(session.id);
   const displayStatus = aggStatus.alerting ? aggStatus.status : session.status;
   const color = STATUS_COLORS[displayStatus];
   const emoji = getSessionEmoji(session.name);
-  const statusVerb = getStatusVerb(displayStatus, session.id);
+  const statusLabel = getStatusLabel(displayStatus, session.id);
   const canAct = canSendInput(session);
   const progress = getProgress(session);
   const currentTask = getCurrentTask(session);
 
-  // Tree prefix using ASCII only: selection + indent + expand icon
-  const treeChar = hasChildren ? (expanded ? 'v' : '>') : (depth > 0 ? '-' : ' ');
-  const selChar = selected ? '>' : ' ';
-  const indent = '  '.repeat(Math.min(depth, 2)); // Max 2 levels of indent
-  const treeCol = `${selChar}${indent}${treeChar}`.padEnd(COL_TREE);
+  // Pulse animation for alerting rows
+  const [pulse, setPulse] = useState(true);
+  useEffect(() => {
+    if (session.alerting || aggStatus.alertingChildCount > 0) {
+      const interval = setInterval(() => setPulse(p => !p), 600);
+      return () => clearInterval(interval);
+    }
+  }, [session.alerting, aggStatus.alertingChildCount]);
 
-  // Build name with optional child count
-  const childBadge = hasChildren ? `(${aggStatus.childCount})` : '';
-  const availableNameLen = COL_NAME - childBadge.length - 1;
-  const truncatedName = session.name.slice(0, availableNameLen);
-  const nameCol = `${truncatedName} ${childBadge}`.padEnd(COL_NAME);
+  // Tree prefix
+  const indent = '  '.repeat(Math.min(depth, 2));
+  const treeChar = hasChildren
+    ? (expanded ? SYMBOLS.treeCollapse : SYMBOLS.treeExpand)
+    : (depth > 0 ? SYMBOLS.bullet : ' ');
+  const selChar = selected ? SYMBOLS.selected : ' ';
 
-  // Alert indicator
-  // * magenta = needs attention (permission or input)
-  // * green = actionable (you can respond from Cast)
-  // ! = child session needs attention
+  // Build name with child count badge
+  const childBadge = hasChildren ? ` (${aggStatus.childCount})` : '';
+  const maxNameLen = COL.NAME - childBadge.length;
+  const truncatedName = session.name.length > maxNameLen
+    ? session.name.slice(0, maxNameLen - 1) + '…'
+    : session.name;
+
+  // Alert indicator with pulse effect
   let alertChar = ' ';
   let alertColor: string | undefined;
   if (session.alerting) {
-    alertChar = '*';
-    // Show green for permission requests (critical), magenta for casual input
-    alertColor = session.attentionType === 'critical' ? 'green' : 'magenta';
+    alertChar = pulse ? SYMBOLS.statusAlert : '○';
+    alertColor = session.attentionType === 'critical' ? COLORS.success : COLORS.accent;
   } else if (aggStatus.alertingChildCount > 0) {
-    alertChar = '!';
-    alertColor = 'magenta';
+    alertChar = pulse ? '!' : '·';
+    alertColor = COLORS.accent;
   }
 
   return (
     <Box flexDirection="row" paddingX={1}>
-      {/* Tree column */}
-      <Box width={COL_TREE}>
-        <Text color={selected ? 'white' : 'gray'} bold={selected}>{treeCol}</Text>
+      {/* Selection + Tree */}
+      <Box width={COL.TREE}>
+        <Text color={selected ? COLORS.accent : COLORS.textDim} bold={selected}>
+          {selChar}{indent}{treeChar}
+        </Text>
       </Box>
 
-      {/* Emoji column - fixed 2 chars */}
-      <Box width={COL_EMOJI}>
+      {/* Emoji */}
+      <Box width={COL.EMOJI}>
         <Text>{emoji}</Text>
       </Box>
 
-      {/* Name column */}
-      <Box width={COL_NAME}>
-        <Text color={aggStatus.alerting ? 'magenta' : undefined} bold={aggStatus.alerting}>
-          {nameCol}
+      {/* Name */}
+      <Box width={COL.NAME}>
+        <Text color={aggStatus.alerting ? COLORS.accent : undefined} bold={aggStatus.alerting || selected}>
+          {truncatedName}
+          <Text dimColor>{childBadge}</Text>
         </Text>
       </Box>
 
-      <Text color="gray">│</Text>
-
-      {/* Vibe column (playful status) */}
-      <Box width={COL_VIBE}>
+      {/* Status with spinner */}
+      <Box width={COL.STATUS}>
         {displayStatus === 'working' ? (
           <Text color={color}>
-            <Spinner type="dots" /> {statusVerb.slice(0, COL_VIBE - 2)}
+            <Spinner type="dots" /> {statusLabel.slice(0, COL.STATUS - 3)}
           </Text>
         ) : (
-          <Text color={color}>{statusVerb.padEnd(COL_VIBE)}</Text>
+          <Text color={color}>{statusLabel.slice(0, COL.STATUS)}</Text>
         )}
       </Box>
 
-      <Text color="gray">│</Text>
-
-      {/* Progress column */}
-      <Box width={COL_PROGRESS}>
-        <Text color={progress ? 'white' : 'gray'}>{progress.padEnd(COL_PROGRESS) || '—'.padEnd(COL_PROGRESS)}</Text>
+      {/* Progress */}
+      <Box width={COL.PROGRESS}>
+        {progress ? (
+          <ProgressText completed={progress.completed} total={progress.total} />
+        ) : (
+          <Text dimColor>{'—'.padEnd(COL.PROGRESS)}</Text>
+        )}
       </Box>
 
-      <Text color="gray">│</Text>
-
-      {/* Alert column */}
-      <Box width={COL_ALERT}>
+      {/* Alert */}
+      <Box width={COL.ALERT}>
         <Text color={alertColor} bold={alertChar !== ' '}>
-          {alertChar.padEnd(COL_ALERT)}
+          {alertChar}
         </Text>
       </Box>
 
-      <Text color="gray">│</Text>
-
-      {/* Task column - shows current activity from TodoWrite */}
-      <Box width={COL_TASK}>
-        <Text dimColor>{currentTask.slice(0, COL_TASK) || '—'}</Text>
+      {/* Task - flexGrow to fill remaining space */}
+      <Box flexGrow={1} minWidth={COL.TASK}>
+        <Text dimColor>{currentTask || '—'}</Text>
       </Box>
     </Box>
   );
 }
 
 /**
- * Recursive tree view component for sessions with subagents
+ * Recursive tree component
  */
 function SessionTree({
   session,
@@ -502,8 +610,6 @@ function SessionTree({
   showCompleted: boolean;
 }) {
   let children = sessionStore.getChildren(session.id);
-
-  // Filter out completed children if toggle is off
   if (!showCompleted) {
     children = children.filter(c => c.status !== 'completed');
   }
@@ -546,27 +652,25 @@ interface ListViewProps {
 
 function ListView({ sessions, selectedIndex, expandedIds, flattenedSessions, showCompleted }: ListViewProps) {
   let rootSessions = sessionStore.sortedRoots();
-  // Filter out completed root sessions if toggle is off
   if (!showCompleted) {
     rootSessions = rootSessions.filter(s => s.status !== 'completed');
   }
   const selectedSession = flattenedSessions[selectedIndex];
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray">
-      <Box paddingX={1} borderBottom borderColor="gray">
-        <Box width={COL_TREE}><Text bold>{''}</Text></Box>
-        <Box width={COL_EMOJI}><Text bold>{''}</Text></Box>
-        <Box width={COL_NAME}><Text bold>{'Session'.padEnd(COL_NAME)}</Text></Box>
-        <Text color="gray">│</Text>
-        <Box width={COL_VIBE}><Text bold>{'Vibe'.padEnd(COL_VIBE)}</Text></Box>
-        <Text color="gray">│</Text>
-        <Box width={COL_PROGRESS}><Text bold>{'Prog'.padEnd(COL_PROGRESS)}</Text></Box>
-        <Text color="gray">│</Text>
-        <Box width={COL_ALERT}><Text bold>{'!'.padEnd(COL_ALERT)}</Text></Box>
-        <Text color="gray">│</Text>
-        <Box width={COL_TASK}><Text bold>{'Task'.padEnd(COL_TASK)}</Text></Box>
+    <Box flexDirection="column" borderStyle="round" borderColor={COLORS.border}>
+      {/* Header row */}
+      <Box paddingX={1} borderStyle="single" borderColor={COLORS.border} borderTop={false} borderLeft={false} borderRight={false}>
+        <Box width={COL.TREE}><Text dimColor>{''}</Text></Box>
+        <Box width={COL.EMOJI}><Text dimColor>{''}</Text></Box>
+        <Box width={COL.NAME}><Text bold dimColor>SESSION</Text></Box>
+        <Box width={COL.STATUS}><Text bold dimColor>STATUS</Text></Box>
+        <Box width={COL.PROGRESS}><Text bold dimColor>#</Text></Box>
+        <Box width={COL.ALERT}><Text bold dimColor>!</Text></Box>
+        <Box flexGrow={1} minWidth={COL.TASK}><Text bold dimColor>TASK</Text></Box>
       </Box>
+
+      {/* Session rows */}
       {rootSessions.map(session => (
         <SessionTree
           key={session.id}
@@ -580,28 +684,29 @@ function ListView({ sessions, selectedIndex, expandedIds, flattenedSessions, sho
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// KANBAN VIEW
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ KANBAN VIEW ▓▓▓
+// ═══════════════════════════════════════════════════════════════
 
 interface KanbanColumnDef {
   id: string;
   title: string;
-  emoji: string;
+  symbol: string;
   color: string;
   statuses: SessionStatus[];
 }
 
-const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  { id: 'attention', title: 'Needs You', emoji: '👋', color: 'magenta', statuses: ['needs_input', 'error'] },
-  { id: 'working', title: 'Busy', emoji: '⚡', color: 'blueBright', statuses: ['working'] },
-  { id: 'idle', title: 'Chilling', emoji: '😴', color: 'gray', statuses: ['idle', 'completed'] },
+export const KANBAN_COLUMNS: KanbanColumnDef[] = [
+  { id: 'attention', title: 'NEEDS YOU', symbol: SYMBOLS.statusAlert, color: COLORS.accent, statuses: ['needs_input', 'error'] },
+  { id: 'working', title: 'WORKING', symbol: SYMBOLS.statusWorking, color: COLORS.working, statuses: ['working'] },
+  { id: 'idle', title: 'IDLE', symbol: SYMBOLS.statusIdle, color: COLORS.idle, statuses: ['idle', 'completed'] },
 ];
 
 function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession; selected: boolean; isSubagent: boolean }) {
   const emoji = getSessionEmoji(session.name);
-  const borderColor = selected ? 'white' : (session.alerting ? 'magenta' : 'gray');
+  const borderColor = selected ? COLORS.borderFocus : (session.alerting ? COLORS.accent : COLORS.border);
   const canAct = canSendInput(session);
+  const progress = getProgress(session);
 
   return (
     <Box
@@ -610,24 +715,28 @@ function KanbanCard({ session, selected, isSubagent }: { session: ClaudeSession;
       borderColor={borderColor}
       paddingX={1}
       marginBottom={1}
-      marginLeft={isSubagent ? 2 : 0}
+      marginLeft={isSubagent ? 1 : 0}
     >
-      {/* Subagent indicator */}
       {isSubagent && (
-        <Text dimColor>↳ subtask</Text>
+        <Text dimColor>{SYMBOLS.treeBranch} subtask</Text>
       )}
       <Box>
-        <Text bold={selected || session.alerting} color={session.alerting ? 'magenta' : undefined}>
-          {emoji} {session.name.slice(0, 16)}
+        <Text bold={selected || session.alerting} color={session.alerting ? COLORS.accent : undefined}>
+          {emoji} {session.name.slice(0, 14)}
         </Text>
-        {canAct && session.alerting && <Text color="green"> ⚡</Text>}
+        {canAct && session.alerting && <Text color={COLORS.success}> {SYMBOLS.actionable}</Text>}
       </Box>
-      {session.status === 'working' ? (
-        <Text color="blueBright" dimColor>
-          <Spinner type="dots" /> {getStatusVerb(session.status, session.id)}
-        </Text>
-      ) : (
-        <Text dimColor>{getStatusVerb(session.status, session.id)}</Text>
+      <Box>
+        {session.status === 'working' ? (
+          <Text color={COLORS.working}>
+            <Spinner type="dots" /> {getStatusLabel(session.status, session.id)}
+          </Text>
+        ) : (
+          <Text dimColor>{getStatusLabel(session.status, session.id)}</Text>
+        )}
+      </Box>
+      {progress && (
+        <ProgressText completed={progress.completed} total={progress.total} />
       )}
     </Box>
   );
@@ -641,12 +750,9 @@ function KanbanColumn({ column, sessions, selectedId, showCompleted }: {
 }) {
   let columnSessions = sessions.filter(s => column.statuses.includes(s.status));
 
-  // Filter out completed subagents if toggle is off
   if (!showCompleted) {
     columnSessions = columnSessions.filter(s => {
-      // Always show root sessions
       if (!s.parentId) return true;
-      // Hide completed subagents
       return s.status !== 'completed';
     });
   }
@@ -656,11 +762,11 @@ function KanbanColumn({ column, sessions, selectedId, showCompleted }: {
 
   return (
     <Box flexDirection="column" width="33%" paddingX={1}>
-      <Box marginBottom={1}>
+      <Box marginBottom={1} borderStyle="single" borderColor={column.color} borderTop={false} borderLeft={false} borderRight={false}>
         <Text bold color={column.color}>
-          {column.emoji} {column.title}
-          <Text dimColor> ({rootCount}{subagentCount > 0 ? `+${subagentCount}` : ''})</Text>
+          {column.symbol} {column.title}
         </Text>
+        <Text dimColor> ({rootCount}{subagentCount > 0 ? `+${subagentCount}` : ''})</Text>
       </Box>
       {columnSessions.length === 0 ? (
         <Text dimColor>—</Text>
@@ -682,7 +788,7 @@ function KanbanView({ sessions, selectedIndex, showCompleted }: { sessions: Clau
   const selectedId = sessions[selectedIndex]?.id ?? null;
 
   return (
-    <Box borderStyle="round" borderColor="gray" padding={1}>
+    <Box borderStyle="round" borderColor={COLORS.border} padding={1}>
       <Box flexDirection="row" width="100%">
         {KANBAN_COLUMNS.map(column => (
           <KanbanColumn
@@ -698,51 +804,48 @@ function KanbanView({ sessions, selectedIndex, showCompleted }: { sessions: Clau
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// SHARED COMPONENTS
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ HEADER ▓▓▓
+// ═══════════════════════════════════════════════════════════════
 
-function Header({ serverPort, view, showCompleted }: { serverPort?: number; view: ViewMode; showCompleted: boolean }) {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Subtle animation - white to gray, not flashy colors
-  const titleColors = ['white', 'gray', 'white'] as const;
-  const titleColor = titleColors[tick % titleColors.length];
-
+function Header({ serverPort, view, showCompleted, alertCount = 0 }: { serverPort?: number; view: ViewMode; showCompleted: boolean; alertCount?: number }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box borderStyle="round" borderColor="gray" paddingX={2}>
-        <Text bold color={titleColor}>🦀 Cast</Text>
-        {serverPort && <Text dimColor> (:{serverPort})</Text>}
+      {/* Logo bar - static, no animation */}
+      <Box borderStyle="round" borderColor={COLORS.border} paddingX={2}>
+        <Text bold>🦀</Text>
+        <Text bold> {CAST_LOGO_MINI}</Text>
+        {serverPort && <Text dimColor> :{serverPort}</Text>}
+        <Text>   </Text>
+        <Text color={view === 'list' ? COLORS.accent : COLORS.textDim} bold={view === 'list'}>[L]ist</Text>
         <Text>  </Text>
-        <Text color={view === 'list' ? 'white' : 'gray'} bold={view === 'list'}>[l]ist</Text>
-        <Text> </Text>
-        <Text color={view === 'kanban' ? 'white' : 'gray'} bold={view === 'kanban'}>[k]anban</Text>
-        <Text>  </Text>
-        <Text color={showCompleted ? 'white' : 'gray'} bold={showCompleted}>[c]ompleted {showCompleted ? '✓' : '○'}</Text>
+        <Text color={view === 'kanban' ? COLORS.accent : COLORS.textDim} bold={view === 'kanban'}>[K]anban</Text>
+        <Text>   </Text>
+        <Text color={showCompleted ? COLORS.success : COLORS.textDim}>[C]ompleted {showCompleted ? '✓' : '○'}</Text>
       </Box>
+
+      {/* Keybindings */}
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
-          ↑/↓ nav • Enter detail • o jump • d done • D cleanup • P prune • c completed • l/k view • q quit
+          ↑↓ nav  enter detail  o jump  d done  D cleanup  P prune  q quit
         </Text>
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>Alert: </Text>
-        <Text color="magenta">*</Text><Text dimColor>=needs you </Text>
-        <Text color="green">*</Text><Text dimColor>=actionable </Text>
-        <Text dimColor>│ In detail: </Text>
-        <Text color="green">y</Text><Text dimColor>/</Text>
-        <Text color="red">n</Text><Text dimColor>/</Text>
-        <Text color="blueBright">r</Text>
+        <Text dimColor>alert: </Text>
+        <Text color={COLORS.accent}>{SYMBOLS.statusAlert}</Text><Text dimColor>=needs you  </Text>
+        <Text color={COLORS.success}>{SYMBOLS.statusAlert}</Text><Text dimColor>=actionable  </Text>
+        <Text dimColor>│ in detail: </Text>
+        <Text color={COLORS.success}>y</Text><Text dimColor>/</Text>
+        <Text color={COLORS.error}>n</Text><Text dimColor>/</Text>
+        <Text color={COLORS.working}>r</Text>
       </Box>
     </Box>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ STATUS BAR ▓▓▓
+// ═══════════════════════════════════════════════════════════════
 
 function StatusBar({ sessions }: { sessions: ClaudeSession[] }) {
   const rootSessions = sessions.filter(s => !s.parentId);
@@ -754,73 +857,100 @@ function StatusBar({ sessions }: { sessions: ClaudeSession[] }) {
   const working = sessions.filter(s => s.status === 'working').length;
   const actionable = sessions.filter(s => s.alerting && canSendInput(s)).length;
 
+  // Status vibe
   let vibe = '';
+  let vibeColor: string = COLORS.textDim;
   if (alerting > 0) {
-    vibe = alerting === 1 ? ' — Someone needs you!' : ` — ${alerting} friends need you!`;
+    vibe = alerting === 1 ? '◆ attention needed' : `◆ ${alerting} need attention`;
+    vibeColor = COLORS.accent;
   } else if (working > 0) {
-    vibe = working === 1 ? ' — One busy bee' : ` — ${working} busy bees`;
+    vibe = working === 1 ? '◈ 1 active' : `◈ ${working} active`;
+    vibeColor = COLORS.working;
   } else if (sessions.length > 0) {
-    vibe = ' — All quiet on the western front';
+    vibe = '◇ all quiet';
   }
 
-  // Count working root sessions
   const workingRoots = rootSessions.filter(s => s.status === 'working').length;
 
   return (
-    <Box marginTop={1} paddingX={1}>
+    <Box marginTop={1} paddingX={1} borderStyle="single" borderColor={COLORS.border} borderTop borderBottom={false} borderLeft={false} borderRight={false}>
       <Text>
-        <Text bold>{rootSessions.length}</Text> session{rootSessions.length !== 1 ? 's' : ''}
+        <Text bold>{rootSessions.length}</Text>
+        <Text dimColor> session{rootSessions.length !== 1 ? 's' : ''}</Text>
         {workingRoots > 0 && (
-          <Text color="blueBright"> ({workingRoots} working)</Text>
+          <Text color={COLORS.working}> ({workingRoots} working)</Text>
         )}
         {subagents.length > 0 && (
           <Text dimColor>
-            {' • '}<Text color="blueBright">{activeSubagents.length}</Text> active
-            {completedSubagents.length > 0 && <Text> / <Text color="gray">{completedSubagents.length}</Text> done</Text>}
+            {' │ '}<Text color={COLORS.working}>{activeSubagents.length}</Text> active
+            {completedSubagents.length > 0 && <Text> / <Text color={COLORS.textDim}>{completedSubagents.length}</Text> done</Text>}
             {' subtask'}{subagents.length !== 1 ? 's' : ''}
           </Text>
         )}
-        {actionable > 0 && <Text color="green"> • {actionable} ⚡actionable</Text>}
-        <Text dimColor>{vibe}</Text>
+        {actionable > 0 && <Text color={COLORS.success}> │ {actionable} {SYMBOLS.actionable} actionable</Text>}
+        <Text color={vibeColor}>  {vibe}</Text>
       </Text>
     </Box>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ EMPTY STATE ▓▓▓
+// ═══════════════════════════════════════════════════════════════
+
 function EmptyState() {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => setFrame(f => f + 1), 200);
+    const interval = setInterval(() => setFrame(f => f + 1), 150);
     return () => clearInterval(interval);
   }, []);
 
-  const crabFrames = ['🦀    ', ' 🦀   ', '  🦀  ', '   🦀 ', '    🦀', '   🦀 ', '  🦀  ', ' 🦀   '];
-  const crab = crabFrames[frame % crabFrames.length];
+  // Animated crab walk with cyberpunk flair
+  const frames = [
+    '       🦀      ',
+    '      🦀       ',
+    '     🦀        ',
+    '    🦀         ',
+    '   🦀          ',
+    '  🦀           ',
+    ' 🦀            ',
+    '🦀             ',
+    ' 🦀            ',
+    '  🦀           ',
+    '   🦀          ',
+    '    🦀         ',
+    '     🦀        ',
+    '      🦀       ',
+  ];
+  const crab = frames[frame % frames.length];
+
+  // Glitchy waiting text
+  const glitchFrames = ['WAITING', 'WA1T1NG', 'WAITING', 'W4ITING', 'WAITING', 'WAI71NG'];
+  const glitchText = glitchFrames[frame % glitchFrames.length];
 
   return (
     <Box flexDirection="column" padding={2} alignItems="center">
-      <Text>{crab}</Text>
-      <Text color="gray" bold>No active sessions</Text>
+      <Box marginBottom={1}>
+        <Text>{crab}</Text>
+      </Box>
+      <Text bold color={COLORS.accent}>◇ {glitchText} FOR SESSIONS ◇</Text>
       <Box marginTop={1}>
-        <Text dimColor>Sessions will appear when Claude Code connects.</Text>
+        <Text dimColor>sessions appear when Claude Code connects</Text>
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>
-          Run <Text bold>csm install-hooks</Text> for setup.
-        </Text>
+        <Text dimColor>run </Text>
+        <Text bold color={COLORS.working}>csm install-hooks</Text>
+        <Text dimColor> for setup</Text>
       </Box>
     </Box>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// MAIN DASHBOARD
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ▓▓▓ MAIN DASHBOARD ▓▓▓
+// ═══════════════════════════════════════════════════════════════
 
-/**
- * Flatten tree structure into navigable list (respecting expanded state and filters)
- */
 function flattenTree(
   sessions: ClaudeSession[],
   expandedIds: Set<string>,
@@ -831,7 +961,6 @@ function flattenTree(
     ? sessions.filter(s => s.parentId === parentId)
     : sessions.filter(s => !s.parentId);
 
-  // Filter out completed sessions if toggle is off
   if (!showCompleted) {
     roots = roots.filter(s => s.status !== 'completed');
   }
@@ -853,17 +982,12 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [view, setView] = useState<ViewMode>(viewMode);
   const [showDetail, setShowDetail] = useState(false);
-  // Track which sessions are expanded (show children)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
-    // Start with all sessions expanded
     return new Set(sessionStore.all().map(s => s.id));
   });
-  // Toggle to show/hide completed subagents (hidden by default)
   const [showCompleted, setShowCompleted] = useState(false);
-  // Status message for user feedback (auto-clears after 3s)
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // Track known session IDs to detect truly new sessions
   const [knownIds, setKnownIds] = useState<Set<string>>(() => {
     return new Set(sessionStore.all().map(s => s.id));
   });
@@ -873,12 +997,10 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
       const currentSessions = sessionStore.sorted();
       setSessions(currentSessions);
 
-      // Only auto-expand truly NEW sessions (not seen before)
       setKnownIds(prevKnown => {
         const newIds = new Set(prevKnown);
         for (const s of currentSessions) {
           if (!prevKnown.has(s.id)) {
-            // This is a new session - auto-expand it
             setExpandedIds(prev => new Set([...prev, s.id]));
           }
           newIds.add(s.id);
@@ -889,7 +1011,6 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     return unsubscribe;
   }, []);
 
-  // Periodic cleanup of stale sessions (every 30 seconds)
   useEffect(() => {
     const cleanup = () => {
       const cleaned = sessionStore.cleanupStaleSessions();
@@ -901,8 +1022,8 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Compute flattened list for navigation (roots + visible children)
   const flattenedSessions = flattenTree(sessions, expandedIds, showCompleted);
+  const alertCount = sessions.filter(s => s.alerting).length;
 
   useEffect(() => {
     if (selectedIndex >= flattenedSessions.length) {
@@ -912,7 +1033,6 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
 
   const selectedSession = flattenedSessions[selectedIndex];
 
-  // Toggle expand/collapse for a session
   const toggleExpand = (sessionId: string) => {
     setExpandedIds(prev => {
       const next = new Set(prev);
@@ -926,22 +1046,20 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
   };
 
   useInput((input, key) => {
-    if (showDetail) return; // Detail view handles its own input
+    if (showDetail) return;
 
     if (input === 'q') exit();
     if (input === 'r') setSessions(sessionStore.sorted());
-    if (input === 'l') setView('list');
-    if (input === 'k') setView('kanban');
-    if (input === 'c') setShowCompleted(prev => !prev);  // Toggle completed subagents
+    if (input === 'l' || input === 'L') setView('list');
+    if (input === 'k' || input === 'K') setView('kanban');
+    if (input === 'c' || input === 'C') setShowCompleted(prev => !prev);
     if (key.upArrow) setSelectedIndex(i => Math.max(0, i - 1));
     if (key.downArrow) setSelectedIndex(i => Math.min(flattenedSessions.length - 1, i + 1));
 
-    // 'o' - Jump to terminal
     if (input === 'o' && selectedSession) {
       sendAction(selectedSession.id, 'focus');
     }
 
-    // 'd' - Mark selected session as completed (remove from active view)
     if (input === 'd' && selectedSession) {
       sessionStore.upsert(selectedSession.id, {
         status: 'completed',
@@ -950,23 +1068,20 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
       });
     }
 
-    // 'D' - Clean all stale sessions
     if (input === 'D') {
       const cleaned = sessionStore.cleanupStaleSessions();
       setSessions(sessionStore.sorted());
-      setStatusMessage(cleaned > 0 ? `Cleaned ${cleaned} stale session(s)` : 'No stale sessions found');
+      setStatusMessage(cleaned > 0 ? `cleaned ${cleaned} stale session(s)` : 'no stale sessions');
       setTimeout(() => setStatusMessage(null), 3000);
     }
 
-    // 'P' - Prune (remove) sessions older than 30 minutes
     if (input === 'P') {
       const pruned = sessionStore.pruneStale(30);
       setSessions(sessionStore.sorted());
-      setStatusMessage(pruned > 0 ? `Removed ${pruned} old session(s)` : 'No old sessions to remove');
+      setStatusMessage(pruned > 0 ? `removed ${pruned} old session(s)` : 'no old sessions');
       setTimeout(() => setStatusMessage(null), 3000);
     }
 
-    // Enter: toggle expand if has children, or show detail
     if (key.return && selectedSession) {
       const hasChildren = sessionStore.getChildren(selectedSession.id).length > 0;
       if (hasChildren && input !== ' ') {
@@ -976,12 +1091,10 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
       }
     }
 
-    // Space: always show detail view
     if (input === ' ' && selectedSession) {
       setShowDetail(true);
     }
 
-    // Left/Right: collapse/expand tree
     if (key.leftArrow && selectedSession) {
       setExpandedIds(prev => {
         const next = new Set(prev);
@@ -998,11 +1111,10 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
     }
   });
 
-  // Detail view overlay
   if (showDetail && selectedSession) {
     return (
       <Box flexDirection="column">
-        <Header serverPort={serverPort} view={view} showCompleted={showCompleted} />
+        <Header serverPort={serverPort} view={view} showCompleted={showCompleted} alertCount={alertCount} />
         <DetailView session={selectedSession} onClose={() => setShowDetail(false)} />
       </Box>
     );
@@ -1010,7 +1122,7 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
 
   return (
     <Box flexDirection="column">
-      <Header serverPort={serverPort} view={view} showCompleted={showCompleted} />
+      <Header serverPort={serverPort} view={view} showCompleted={showCompleted} alertCount={alertCount} />
 
       {sessions.length === 0 ? (
         <EmptyState />
@@ -1028,7 +1140,7 @@ export function Dashboard({ viewMode = 'list', serverPort }: DashboardProps) {
 
       {statusMessage && (
         <Box paddingX={1}>
-          <Text dimColor>{statusMessage}</Text>
+          <Text color={COLORS.working}>{SYMBOLS.bullet} {statusMessage}</Text>
         </Box>
       )}
 
