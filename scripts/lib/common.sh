@@ -5,6 +5,26 @@
 CSM_PORT="${CSM_PORT:-7432}"
 CSM_HOST="${CSM_HOST:-localhost}"
 
+# Check if a path is a plugin-spawned session (should be hidden from Cast)
+# These are background sessions like double-shot-latte's "judge" instances
+# Returns 0 (true) if plugin session, 1 (false) otherwise
+is_plugin_session() {
+  local path="$1"
+  local home_dir="$HOME"
+
+  # Plugin cache directories (e.g., ~/.claude/plugins/*)
+  if [[ "$path" == "$home_dir/.claude/plugins/"* ]]; then
+    return 0
+  fi
+
+  # Known plugin working directories (like double-shot-latte's judge dir)
+  if [[ "$path" == "$home_dir/.claude/double-shot-latte"* ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
 # Check if a path is a "global" location (not a specific project)
 # Returns 0 (true) if global, 1 (false) if project-specific
 is_global_path() {
@@ -48,32 +68,45 @@ generate_friendly_name() {
 }
 
 # Derive a descriptive project name from the working directory
+# IMPORTANT: This function should NEVER return empty string
 # Usage: derive_project_name "/path/to/project"
 derive_project_name() {
   local cwd="$1"
   local project_name=""
 
-  if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
-    echo ""
+  # Handle empty/missing CWD - still try to provide something useful
+  if [ -z "$cwd" ]; then
+    generate_friendly_name
+    return
+  fi
+
+  # For ~/.claude paths, always return descriptive names (even if dir doesn't exist)
+  if [[ "$cwd" == "$HOME/.claude"* ]]; then
+    local subpath="${cwd#$HOME/.claude}"
+    case "$subpath" in
+      /plugins*|/skills*) echo "skill-editing" ;;
+      /hooks*) echo "hook-config" ;;
+      /plans*) echo "plan-editing" ;;
+      /handoffs*) echo "handoff-review" ;;
+      /commands*) echo "command-editing" ;;
+      /projects*) echo "claude-project" ;;
+      /memories*) echo "memory-editing" ;;
+      /todos*) echo "todo-editing" ;;
+      *) echo "claude-config" ;;
+    esac
+    return
+  fi
+
+  # For non-existent directories, use friendly name rather than empty
+  if [ ! -d "$cwd" ]; then
+    generate_friendly_name
     return
   fi
 
   # Check if this is a global/generic path (not a specific project)
   if is_global_path "$cwd"; then
-    # For ~/.claude paths, indicate what kind of Claude work
-    if [[ "$cwd" == "$HOME/.claude"* ]]; then
-      local subpath="${cwd#$HOME/.claude}"
-      case "$subpath" in
-        /plugins*|/skills*) echo "skill-editing" ;;
-        /hooks*) echo "hook-config" ;;
-        /plans*) echo "plan-editing" ;;
-        /handoffs*) echo "handoff-review" ;;
-        *) echo "claude-config" ;;
-      esac
-    else
-      # Generic location - use friendly random name
-      generate_friendly_name
-    fi
+    # Generic location - use friendly random name
+    generate_friendly_name
     return
   fi
 
@@ -101,6 +134,12 @@ derive_project_name() {
     project_name=$(basename "$cwd")
   fi
 
+  # Final safety: never return empty (use friendly name as last resort)
+  if [ -z "$project_name" ]; then
+    generate_friendly_name
+    return
+  fi
+
   echo "$project_name"
 }
 
@@ -126,13 +165,40 @@ detect_terminal() {
   fi
 }
 
+# Debug logging - enabled via CSM_DEBUG=1 env var OR ~/.cast-debug file
+# Use: touch ~/.cast-debug to enable, rm ~/.cast-debug to disable
+debug_log() {
+  if [ "${CSM_DEBUG:-}" = "1" ] || [ "${CSM_DEBUG:-}" = "true" ] || [ -f "$HOME/.cast-debug" ]; then
+    local timestamp=$(date +%H:%M:%S.%3N)
+    echo "[$timestamp] [HOOK] $*" >> /tmp/cast-debug.log
+  fi
+}
+
 # Send an event to the Cast server
 # Usage: send_event '{"event": "...", ...}'
 send_event() {
   local payload="$1"
-  curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
-    -H "Content-Type: application/json" \
-    -d "$payload" > /dev/null 2>&1 || true
+  local event_type=$(echo "$payload" | jq -r '.event // "unknown"' 2>/dev/null)
+
+  debug_log "Sending $event_type event"
+
+  local response
+  local http_code
+
+  if [ "${CSM_DEBUG:-}" = "1" ] || [ "${CSM_DEBUG:-}" = "true" ]; then
+    # In debug mode, capture response for logging
+    response=$(curl -s -w "\n%{http_code}" -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
+      -H "Content-Type: application/json" \
+      -d "$payload" 2>&1)
+    http_code=$(echo "$response" | tail -1)
+    local body=$(echo "$response" | head -n -1)
+    debug_log "Response [$http_code]: $body"
+  else
+    # Normal mode: fire and forget
+    curl -s -X POST "http://${CSM_HOST}:${CSM_PORT}/event" \
+      -H "Content-Type: application/json" \
+      -d "$payload" > /dev/null 2>&1 || true
+  fi
 }
 
 # Get current timestamp in ISO format

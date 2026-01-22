@@ -15,6 +15,18 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Skip plugin-spawned sessions (e.g., double-shot-latte judge instances)
+if is_plugin_session "$CWD"; then
+  exit 0
+fi
+
+# Log raw payload for Task tool to see all available fields
+if [ "$TOOL_NAME" = "Task" ]; then
+  debug_log "=== TASK TOOL RAW PAYLOAD ==="
+  debug_log "$(echo "$INPUT" | jq -c '.' 2>/dev/null || echo "$INPUT")"
+fi
+debug_log "Tool use hook fired: session=$SESSION_ID tool=$TOOL_NAME"
+
 # Handle TodoWrite tool (task progress tracking)
 if [ "$TOOL_NAME" = "TodoWrite" ]; then
   TODOS=$(echo "$INPUT" | jq -c '.tool_input.todos // []')

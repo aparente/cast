@@ -14,6 +14,11 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Skip plugin-spawned sessions (e.g., double-shot-latte judge instances)
+if is_plugin_session "$CWD"; then
+  exit 0
+fi
+
 # Get last assistant message for context display
 LAST_MESSAGE=$(get_last_assistant_message "$CWD" "$SESSION_ID")
 

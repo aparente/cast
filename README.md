@@ -188,6 +188,15 @@ bun run src/cli.ts install-hooks
 5. **Store notifies** React components via pub/sub
 6. **UI re-renders** with new session state
 
+### Filtered Sessions
+
+Cast automatically filters out sessions from plugin-spawned directories to keep the dashboard clean:
+
+- `~/.claude/plugins/*` — Plugin cache/working directories
+- `~/.claude/double-shot-latte/*` — Judge instances from double-shot-latte plugin
+
+These background sessions are silently ignored and won't appear in the dashboard.
+
 ## Configuration
 
 ### Environment Variables

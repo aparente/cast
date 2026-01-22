@@ -15,6 +15,11 @@ if [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Skip plugin-spawned sessions (e.g., double-shot-latte judge instances)
+if is_plugin_session "$CWD"; then
+  exit 0
+fi
+
 PROJECT_NAME=$(derive_project_name "$CWD")
 detect_terminal
 

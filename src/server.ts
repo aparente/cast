@@ -7,6 +7,28 @@ import type { SessionStatus, TerminalType, QuickActionType, TodoItem, AttentionT
 const CRITICAL_KEYWORDS = ['permission', 'approve', 'plan', 'proceed', 'allow', 'confirm', 'yes/no', 'y/n'];
 
 /**
+ * Tools that require user approval before execution
+ * If these are running, the user MUST have approved, so we should clear alerting
+ */
+const APPROVAL_REQUIRED_TOOLS = new Set([
+  'Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit',
+  'Task', 'KillShell', 'Skill',  // Execution tools
+]);
+
+/**
+ * Check if a tool requires user approval to run
+ * Returns true for tools that need approval, false for read-only tools
+ */
+function requiresApproval(toolName?: string): boolean {
+  if (!toolName) return false;
+  // Check exact match first
+  if (APPROVAL_REQUIRED_TOOLS.has(toolName)) return true;
+  // MCP tools typically need approval
+  if (toolName.startsWith('mcp__')) return true;
+  return false;
+}
+
+/**
  * Determine if an input request is critical (permission) vs casual (question)
  */
 function determineAttentionType(message?: string, isNotification?: boolean): AttentionType {
@@ -23,6 +45,18 @@ function determineAttentionType(message?: string, isNotification?: boolean): Att
 }
 
 const DEFAULT_PORT = 7432; // "SSMGR" on phone keypad :)
+
+/**
+ * Debug logging - enabled via CSM_DEBUG=1 environment variable
+ */
+const DEBUG = process.env.CSM_DEBUG === '1' || process.env.CSM_DEBUG === 'true';
+
+function debugLog(context: string, message: string, data?: Record<string, unknown>) {
+  if (!DEBUG) return;
+  const timestamp = new Date().toISOString().slice(11, 23); // HH:mm:ss.sss
+  const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+  console.log(`[${timestamp}] [${context}] ${message}${dataStr}`);
+}
 
 interface HookEvent {
   event: 'session_start' | 'session_end' | 'notification' | 'tool_use' | 'status_change' | 'subagent_start' | 'subagent_stop' | 'todo_update' | 'plan_update';
@@ -247,6 +281,14 @@ async function focusTerminal(session: ClaudeSession): Promise<{ success: boolean
 function handleHookEvent(event: HookEvent): { success: boolean; message: string } {
   const { session_id, cwd } = event;
 
+  // Debug: Log all incoming events
+  debugLog('EVENT', `Received ${event.event}`, {
+    session_id,
+    tool_name: event.tool_name,
+    message: event.message?.slice(0, 50),
+    timestamp: event.timestamp,
+  });
+
   switch (event.event) {
     case 'session_start': {
       // Use project_name from hook if available, otherwise derive from cwd
@@ -273,6 +315,9 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
 
     case 'notification': {
       const attentionType = determineAttentionType(event.message, true);
+      const existingSession = sessionStore.get(session_id);
+      const isNewSession = !existingSession;
+
       const updates: Partial<ClaudeSession> = {
         status: 'needs_input',
         alerting: true,
@@ -280,22 +325,95 @@ function handleHookEvent(event: HookEvent): { success: boolean; message: string 
         currentTask: event.message || 'Waiting for input',
         pendingMessage: event.message,
       };
+
       // Include last assistant message for context display
       if (event.last_message) {
         updates.lastStatus = event.last_message;
       }
+
+      // Handle parent-child relationship for subagents
+      // If parent_session_id is provided (detected by notification hook), link this session to parent
+      if (event.parent_session_id && event.parent_session_id !== session_id) {
+        const parentExists = sessionStore.get(event.parent_session_id);
+        if (parentExists) {
+          updates.parentId = event.parent_session_id;
+          debugLog('SUBAGENT', `Linking ${session_id} to parent ${event.parent_session_id}`, {
+            isNewSession,
+            parentName: parentExists.name,
+          });
+        } else {
+          debugLog('SUBAGENT', `Parent ${event.parent_session_id} not found for ${session_id}`);
+        }
+      }
+
+      // For new sessions (potential subagents), provide basic info
+      if (isNewSession) {
+        updates.name = updates.name || deriveSessionName(cwd);
+        updates.projectPath = cwd;
+        debugLog('ALERT', `New session created from notification: ${session_id}`, {
+          name: updates.name,
+          hasParent: !!updates.parentId,
+        });
+      }
+
+      debugLog('ALERT', `Setting alerting=true for ${session_id}`, {
+        attentionType,
+        message: event.message?.slice(0, 50),
+        isNewSession,
+        parentId: updates.parentId,
+      });
+
       sessionStore.upsert(session_id, updates);
       return { success: true, message: `Session ${session_id} alerting (${attentionType})` };
     }
 
     case 'tool_use': {
-      sessionStore.upsert(session_id, {
-        status: 'working',
-        alerting: false,
-        attentionType: null,  // Clear attention type when working
-        currentTask: event.tool_name ? `Using ${event.tool_name}` : undefined,
-        pendingMessage: undefined,  // Clear pending on tool use
-      });
+      const current = sessionStore.get(session_id);
+      const isApprovalTool = requiresApproval(event.tool_name);
+      const isTaskTool = event.tool_name === 'Task';
+
+      // Special handling for Task tool - it spawns subagents
+      // Don't clear alerting immediately, as the subagent might need permission
+      if (isTaskTool) {
+        debugLog('TASK', `Task tool used by ${session_id} - spawning subagent`, {
+          currentStatus: current?.status,
+          alerting: current?.alerting,
+        });
+        // Update task but don't change alert state - subagent might need input soon
+        sessionStore.upsert(session_id, {
+          status: 'working',
+          currentTask: 'Running subagent...',
+          // Don't clear alerting for Task - subagent might need permission
+        });
+        return { success: true, message: `Session ${session_id} spawning subagent` };
+      }
+
+      // Preserve alert state ONLY for read-only tools when session is alerting
+      // If using an approval-required tool, user MUST have approved → clear alerting
+      const preserveAlertState = !isApprovalTool &&
+        current?.status === 'needs_input' &&
+        current?.alerting === true;
+
+      if (preserveAlertState) {
+        debugLog('TOOL', `Preserving alert state for ${session_id} (read-only tool: ${event.tool_name})`, {
+          currentStatus: current?.status,
+          alerting: current?.alerting,
+        });
+        // Read-only tool during alert - might be stale, preserve state
+        sessionStore.upsert(session_id, {
+          currentTask: event.tool_name ? `Using ${event.tool_name}` : current?.currentTask,
+        });
+      } else {
+        debugLog('TOOL', `Clearing alert state for ${session_id} (tool: ${event.tool_name}, approval-required: ${isApprovalTool})`);
+        // Clear alerting - either not alerting, or user approved (approval tool running)
+        sessionStore.upsert(session_id, {
+          status: 'working',
+          alerting: false,
+          attentionType: null,
+          currentTask: event.tool_name ? `Using ${event.tool_name}` : undefined,
+          pendingMessage: undefined,
+        });
+      }
       return { success: true, message: `Session ${session_id} tool use recorded` };
     }
 
