@@ -1,8 +1,16 @@
 {
   "name": "cast",
-  "module": "index.ts",
+  "module": "src/cli.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "cast": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.7",
@@ -14,7 +22,6 @@
   "dependencies": {
     "commander": "^14.0.2",
     "ink": "^6.6.0",
-    "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^19.2.3"
   }
