@@ -1,0 +1,12 @@
+{"type":"custom-title","customTitle":"Old Title","sessionId":"s1","timestamp":"2026-06-09T10:00:00.000Z"}
+{"type":"custom-title","customTitle":"Reagent Verification","sessionId":"s1","timestamp":"2026-06-09T10:00:01.000Z"}
+{"type":"mode","mode":"default","sessionId":"s1"}
+{"type":"user","message":{"role":"user","content":"retag the regen-med notes per the new ontology"},"timestamp":"2026-06-09T10:00:02.000Z","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Tightened tagging on 40 notes. Running verification…"},{"type":"tool_use","id":"tu_1","name":"Bash","input":{"command":"grep -c 'regen-med' notes/**/*.md"}}]},"timestamp":"2026-06-09T10:00:10.000Z","isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1","content":"40"}]},"timestamp":"2026-06-09T10:00:12.000Z","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_2","name":"TodoWrite","input":{"todos":[{"content":"retag notes","status":"completed","activeForm":"Retagging notes"},{"content":"regenerate charts","status":"in_progress","activeForm":"Regenerating charts"},{"content":"update README","status":"pending","activeForm":"Updating README"}]}}]},"timestamp":"2026-06-09T10:00:13.000Z","isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_2","content":"ok"}]},"timestamp":"2026-06-09T10:00:14.000Z","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_3","name":"Task","input":{"description":"verify 40 tagged notes","prompt":"Check the notes...","subagent_type":"general-purpose"}}]},"timestamp":"2026-06-09T10:00:15.000Z","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_4","name":"Edit","input":{"file_path":"/Users/x/notes/reagents/validation.md","old_string":"a","new_string":"b"}}]},"timestamp":"2026-06-09T10:00:20.000Z","isSidechain":false}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"sidechain noise"}]},"timestamp":"2026-06-09T10:00:21.000Z","isSidechain":true}
+not even json
