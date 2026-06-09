@@ -10,7 +10,7 @@ const session = (surface: boolean): Session => ({
   row: 'needs_you',
   alertSince: 1,
   detail: null,
-  surface: surface ? { surface: 'S', tab: 'T' } : null,
+  surface: surface ? { workspace: 'WS' } : null,
 });
 
 function deps(screen: string | null): ActionDeps & { sent: string[] } {

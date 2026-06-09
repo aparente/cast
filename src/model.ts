@@ -110,8 +110,8 @@ export class CastStore {
   private infos: SessionInfo[] = [];
   private alerts = new Map<string, number>();
   private details = new Map<string, TranscriptDetail>();
-  private surfaces = new Map<number, SurfaceRef>();
-  private tabToPid = new Map<string, number>();
+  private wsByPid = new Map<number, string>(); // pid → workspace id
+  private wsBySession = new Map<string, string>(); // sessionId → workspace id (from hooks)
   private listeners = new Set<() => void>();
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
   cmuxUp = false;
@@ -172,6 +172,7 @@ export class CastStore {
 
   applyEvent(e: CmuxEvent): void {
     if (e.kind === 'hook') {
+      if (e.workspace) this.wsBySession.set(e.sessionId, e.workspace);
       if (e.hook === 'Notification') {
         this.alerts.set(e.sessionId, this.now());
       } else {
@@ -181,10 +182,7 @@ export class CastStore {
       this.refreshDetail(e.sessionId);
       this.notify();
     } else if (e.kind === 'status') {
-      // set_status --panel is the terminal surface; --tab is the tab.
-      const prev = this.surfaces.get(e.pid);
-      this.surfaces.set(e.pid, { surface: e.panel ?? prev?.surface ?? null, tab: e.tab });
-      this.tabToPid.set(e.tab, e.pid);
+      this.wsByPid.set(e.pid, e.workspace);
       this.notify();
     } else if (e.kind === 'notif_clear') {
       this.notify();
@@ -195,8 +193,7 @@ export class CastStore {
   seedNotifications(ns: CmuxNotification[]): void {
     for (const n of ns) {
       if (n.read || !isNeedsYou(n)) continue;
-      const pid = this.tabToPid.get(n.tab);
-      const info = pid !== undefined ? this.infos.find((i) => i.pid === pid) : undefined;
+      const info = this.infos.find((i) => this.workspaceFor(i) === n.workspace);
       if (info && !this.alerts.has(info.sessionId)) {
         this.alerts.set(info.sessionId, n.at || this.now());
       }
@@ -204,22 +201,26 @@ export class CastStore {
     this.notify();
   }
 
-  /** Map surfaces for sessions cmux hasn't announced since we started. */
-  seedSurface(pid: number, ref: SurfaceRef): void {
-    const prev = this.surfaces.get(pid);
-    this.surfaces.set(pid, {
-      surface: ref.surface ?? prev?.surface ?? null,
-      tab: ref.tab ?? prev?.tab ?? null,
-    });
-    if (ref.tab) this.tabToPid.set(ref.tab, pid);
+  /** Seed pid→workspace for sessions cmux hasn't announced since we started. */
+  seedWorkspaces(map: Map<number, string>): void {
+    for (const [pid, ws] of map) if (!this.wsByPid.has(pid)) this.wsByPid.set(pid, ws);
+    this.notify();
   }
 
-  hasSurface(pid: number): boolean {
-    return this.surfaces.get(pid)?.surface != null;
+  private workspaceFor(info: SessionInfo): string | null {
+    return this.wsBySession.get(info.sessionId) ?? this.wsByPid.get(info.pid) ?? null;
+  }
+
+  unmappedPids(): number[] {
+    return this.infos.filter((i) => this.workspaceFor(i) === null).map((i) => i.pid);
   }
 
   snapshotAll(): Session[] {
-    return buildSessions(this.infos, this.alerts, this.details, this.surfaces);
+    const surfaces = new Map<number, SurfaceRef>();
+    for (const info of this.infos) {
+      surfaces.set(info.pid, { workspace: this.workspaceFor(info) });
+    }
+    return buildSessions(this.infos, this.alerts, this.details, surfaces);
   }
 
   snapshot(): Grouped & { cmuxUp: boolean } {

@@ -19,18 +19,6 @@ function buildStore(): CastStore {
   return new CastStore({ readSessions, readDetail });
 }
 
-async function seedSurfaces(store: CastStore): Promise<void> {
-  // cmux only announces pid→surface on status changes; for sessions that
-  // predate us, read CMUX_SURFACE_ID from each process's environment.
-  await Promise.all(
-    readSessions().map(async (info) => {
-      if (store.hasSurface(info.pid)) return;
-      const surface = await cmux.surfaceFromEnv(info.pid);
-      if (surface) store.seedSurface(info.pid, { surface, tab: null });
-    }),
-  );
-}
-
 async function tui(): Promise<void> {
   const store = buildStore();
   store.refreshSessions();
@@ -40,9 +28,16 @@ async function tui(): Promise<void> {
     (up) => store.setCmuxUp(up),
   );
 
-  await seedSurfaces(store);
+  // Map every session to its cmux workspace from the live process tree;
+  // live hook/status events keep it current afterward.
+  store.seedWorkspaces(await cmux.workspacesByPid());
   store.seedNotifications(await cmux.listNotifications());
   store.refreshHotDetails();
+
+  // Re-resolve workspace mapping periodically for sessions opened later.
+  const wsTimer = setInterval(async () => {
+    if (store.unmappedPids().length > 0) store.seedWorkspaces(await cmux.workspacesByPid());
+  }, 4000);
 
   const actionDeps = {
     readScreen: cmux.readScreen,
@@ -57,7 +52,7 @@ async function tui(): Promise<void> {
       row: 'stale' as const,
       alertSince: null,
       detail: null,
-      surface: null,
+      surface: { workspace: null },
     }));
 
   const { waitUntilExit } = render(
@@ -65,6 +60,7 @@ async function tui(): Promise<void> {
     { exitOnCtrlC: true },
   );
   await waitUntilExit();
+  clearInterval(wsTimer);
   stream.stop();
   unwatch();
   process.exit(0);
@@ -121,10 +117,13 @@ async function doctor(): Promise<void> {
     });
     check(gotEvent, 'event stream', gotEvent ? 'probe event received' : 'no events within 3s');
 
-    const surfaced = (
-      await Promise.all(sessions.slice(0, 10).map((s) => cmux.surfaceFromEnv(s.pid)))
-    ).filter(Boolean).length;
-    check(surfaced > 0 || sessions.length === 0, 'surface mapping', `${surfaced}/${Math.min(10, sessions.length)} sampled sessions mapped`);
+    const wsMap = await cmux.workspacesByPid();
+    const mapped = sessions.filter((s) => wsMap.has(s.pid)).length;
+    check(
+      mapped > 0 || sessions.length === 0,
+      'workspace mapping',
+      `${mapped}/${sessions.length} sessions mapped to a cmux workspace`,
+    );
   }
 
   process.exit(failed ? 1 : 0);

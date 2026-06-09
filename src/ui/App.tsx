@@ -124,7 +124,7 @@ export function App({
       if (input === 'n') return runAction(deny);
       if (input === 'm') {
         if (!current) return;
-        if (!current.surface?.surface) return flash('view-only · not in cmux');
+        if (!current.surface?.workspace) return flash('view-only · not in cmux');
         setMode('compose');
         return;
       }

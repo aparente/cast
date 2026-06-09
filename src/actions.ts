@@ -4,9 +4,9 @@ import type { ActionResult, Session, SurfaceRef } from './types';
 
 export interface ActionDeps {
   readScreen: (surface: SurfaceRef) => Promise<string | null>;
-  send: (surface: SurfaceRef, text: string) => Promise<{ ok: boolean }>;
-  sendKey: (surface: SurfaceRef, key: string) => Promise<{ ok: boolean }>;
-  focusTab: (surface: SurfaceRef) => Promise<{ ok: boolean }>;
+  send: (surface: SurfaceRef, text: string) => Promise<{ ok: boolean; error?: string }>;
+  sendKey: (surface: SurfaceRef, key: string) => Promise<{ ok: boolean; error?: string }>;
+  focusTab: (surface: SurfaceRef) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const VIEW_ONLY: ActionResult = { ok: false, reason: 'view-only · not in cmux' };
@@ -23,7 +23,7 @@ export function screenShowsPrompt(screen: string): boolean {
 }
 
 async function answer(s: Session, key: 'y' | 'n', deps: ActionDeps): Promise<ActionResult> {
-  if (!s.surface?.surface) return VIEW_ONLY;
+  if (!s.surface?.workspace) return VIEW_ONLY;
   const screen = await deps.readScreen(s.surface);
   if (screen === null) return { ok: false, reason: 'could not read screen' };
   if (!screenShowsPrompt(screen)) {
@@ -42,14 +42,14 @@ export function deny(s: Session, deps: ActionDeps): Promise<ActionResult> {
 }
 
 export async function message(s: Session, text: string, deps: ActionDeps): Promise<ActionResult> {
-  if (!s.surface?.surface) return VIEW_ONLY;
+  if (!s.surface?.workspace) return VIEW_ONLY;
   if (!text.trim()) return { ok: false, reason: 'empty message' };
   const sent = await deps.send(s.surface, text);
-  return sent.ok ? { ok: true } : { ok: false, reason: 'send failed' };
+  return sent.ok ? { ok: true } : { ok: false, reason: sent.error ?? 'send failed' };
 }
 
 export async function focus(s: Session, deps: ActionDeps): Promise<ActionResult> {
-  if (!s.surface || (!s.surface.tab && !s.surface.surface)) return VIEW_ONLY;
+  if (!s.surface?.workspace) return VIEW_ONLY;
   const r = await deps.focusTab(s.surface);
   return r.ok ? { ok: true } : { ok: false, reason: 'focus failed' };
 }

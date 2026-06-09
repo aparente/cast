@@ -39,7 +39,7 @@ function makeGrouped() {
       ['alert-1', pendingDetail],
       ['busy-1', { ...pendingDetail, pending: null, subagents: pendingDetail.subagents }],
     ]),
-    new Map([[1, { surface: 'S1', tab: 'T1' }]]),
+    new Map([[1, { workspace: 'WS1' }]]),
   );
   return sortSessions(sessions);
 }

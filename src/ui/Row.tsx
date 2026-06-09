@@ -39,7 +39,7 @@ export function SessionRow({
   const age = formatAge(now - (needsYou && s.alertSince ? s.alertSince : s.info.updatedAt));
   const ctxW = Math.max(0, width - (2 + nameW + 2 + 1 + 1 + 4 + 2));
   const ctx = ctxW > 8 ? oneLine(contextFor(s), ctxW) : '';
-  const viewOnly = !s.surface?.surface;
+  const viewOnly = !s.surface?.workspace;
 
   const nameColor = needsYou ? CORAL : stale ? 'gray' : undefined;
 

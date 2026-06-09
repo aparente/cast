@@ -6,25 +6,29 @@ import type { SurfaceRef } from '../types';
 
 // ── event stream parsing ────────────────────────────────────────────────
 
+// A session's stable cmux identity is its WORKSPACE UUID. The same value
+// appears as the hook `workspace_id`, the set_status `--tab`, and the 2nd
+// field of a notification line; `--workspace=<uuid>` reliably targets the
+// session's terminal for send/read-screen/select (surface UUIDs do not).
+
 export type CmuxEvent =
-  | { kind: 'hook'; hook: string; sessionId: string; cwd: string }
-  | { kind: 'status'; pid: number; tab: string; panel: string | null; running: boolean }
+  | { kind: 'hook'; hook: string; sessionId: string; cwd: string; workspace: string }
+  | { kind: 'status'; pid: number; workspace: string; running: boolean }
   | { kind: 'notif_clear' }
   | { kind: 'other' };
 
 /** Parse `set_status` args like:
- *  `claude_code Running --icon=bolt.fill --tab=<UUID> --panel=<UUID> --pid=54662` */
+ *  `claude_code Running --icon=… --tab=<WORKSPACE-UUID> --panel=<UUID> --pid=54662` */
 export function parseSetStatusArgs(
   args: string,
-): { pid: number; tab: string; panel: string | null; running: boolean } | null {
+): { pid: number; workspace: string; running: boolean } | null {
   if (!args.startsWith('claude_code ')) return null;
   const pid = args.match(/--pid=(\d+)/)?.[1];
-  const tab = args.match(/--tab=([0-9A-Fa-f-]+)/)?.[1];
-  if (!pid || !tab) return null;
+  const workspace = args.match(/--tab=([0-9A-Fa-f-]+)/)?.[1];
+  if (!pid || !workspace) return null;
   return {
     pid: Number(pid),
-    tab,
-    panel: args.match(/--panel=([0-9A-Fa-f-]+)/)?.[1] ?? null,
+    workspace,
     running: /^claude_code Running\b/.test(args),
   };
 }
@@ -47,6 +51,7 @@ export function parseEventLine(line: string): CmuxEvent | null {
       hook: d.name.slice('agent.hook.'.length),
       sessionId: raw.replace(/^claude-/, ''),
       cwd: String(d.payload?.cwd ?? ''),
+      workspace: String(d.payload?.workspace_id ?? d.workspace_id ?? ''),
     };
   }
   if (d.name === 'sidebar.metadata.updated' && d.payload?.command === 'set_status') {
@@ -60,7 +65,7 @@ export function parseEventLine(line: string): CmuxEvent | null {
 // ── list-notifications parsing ──────────────────────────────────────────
 
 export interface CmuxNotification {
-  tab: string;
+  workspace: string;
   title: string;
   body: string;
   at: number;
@@ -74,15 +79,43 @@ export function parseNotificationLine(line: string): CmuxNotification | null {
   if (!m) return null;
   const parts = m[1]!.split('|');
   if (parts.length < 8) return null;
-  const [, , tab, readState, title, , body, iso] = parts;
-  if (!tab) return null;
+  const [, workspace, , readState, title, , body, iso] = parts;
+  if (!workspace) return null;
   return {
-    tab,
+    workspace,
     title: title ?? '',
     body: body ?? '',
     at: Date.parse(iso ?? '') || 0,
     read: readState === 'read',
   };
+}
+
+/** Parse `cmux top --all --processes --format tsv` → pid → workspace ref.
+ *  Columns: cpu mem count type id parent name. We walk each process row's
+ *  parent chain up to the first `workspace:<n>` ref. */
+export function parseTopWorkspaces(tsv: string): Map<number, string> {
+  const parent = new Map<string, string>();
+  const procPids: { pid: number; node: string }[] = [];
+  for (const line of tsv.split('\n')) {
+    const c = line.split('\t');
+    if (c.length < 6) continue;
+    const [, , , type, id, par] = c;
+    if (!id) continue;
+    parent.set(id, par ?? '');
+    if (type === 'process' && /^\d+$/.test(id)) procPids.push({ pid: Number(id), node: id });
+  }
+  const out = new Map<number, string>();
+  for (const { pid, node } of procPids) {
+    let cur: string | undefined = node;
+    for (let i = 0; i < 12 && cur; i++) {
+      if (/^workspace:\d+$/.test(cur)) {
+        out.set(pid, cur);
+        break;
+      }
+      cur = parent.get(cur);
+    }
+  }
+  return out;
 }
 
 /** True for the notifications that mean a session needs the user. */
@@ -94,7 +127,7 @@ export function isNeedsYou(n: CmuxNotification): boolean {
 
 type RunResult = { ok: true; stdout: string } | { ok: false; error: string };
 
-async function run(args: string[], timeoutMs = 4000): Promise<RunResult> {
+async function run(args: string[], timeoutMs = 10_000): Promise<RunResult> {
   try {
     const proc = Bun.spawn(['cmux', ...args], { stdout: 'pipe', stderr: 'pipe' });
     const timer = setTimeout(() => proc.kill(), timeoutMs);
@@ -123,40 +156,33 @@ export async function listNotifications(): Promise<CmuxNotification[]> {
 
 const NO_SURFACE: RunResult = { ok: false, error: 'no terminal surface for session' };
 
+/** pid → workspace ref, resolved from the live cmux process tree. */
+export async function workspacesByPid(): Promise<Map<number, string>> {
+  const r = await run(['top', '--all', '--processes', '--format', 'tsv']);
+  return r.ok ? parseTopWorkspaces(r.stdout) : new Map();
+}
+
 export async function readScreen(ref: SurfaceRef): Promise<string | null> {
-  if (!ref.surface) return null;
-  const r = await run(['read-screen', `--surface=${ref.surface}`]);
+  if (!ref.workspace) return null;
+  const r = await run(['read-screen', `--workspace=${ref.workspace}`]);
   return r.ok ? r.stdout : null;
 }
 
 export async function send(ref: SurfaceRef, text: string): Promise<RunResult> {
-  if (!ref.surface) return NO_SURFACE;
-  const sent = await run(['send', `--surface=${ref.surface}`, text]);
+  if (!ref.workspace) return NO_SURFACE;
+  const sent = await run(['send', `--workspace=${ref.workspace}`, text]);
   if (!sent.ok) return sent;
-  return run(['send-key', `--surface=${ref.surface}`, 'Enter']);
+  return run(['send-key', `--workspace=${ref.workspace}`, 'Enter']);
 }
 
 export async function sendKey(ref: SurfaceRef, key: string): Promise<RunResult> {
-  if (!ref.surface) return NO_SURFACE;
-  return run(['send-key', `--surface=${ref.surface}`, key]);
+  if (!ref.workspace) return NO_SURFACE;
+  return run(['send-key', `--workspace=${ref.workspace}`, key]);
 }
 
 export async function focusTab(ref: SurfaceRef): Promise<RunResult> {
-  if (ref.tab) return run(['tab-action', '--action=focus', `--tab=${ref.tab}`]);
-  if (ref.surface) return run(['tab-action', '--action=focus', `--surface=${ref.surface}`]);
-  return NO_SURFACE;
-}
-
-/** Read CMUX_SURFACE_ID from a process's environment (macOS `ps -wwE`). */
-export async function surfaceFromEnv(pid: number): Promise<string | null> {
-  try {
-    const proc = Bun.spawn(['ps', '-p', String(pid), '-wwE', '-o', 'command='], { stdout: 'pipe' });
-    const out = await new Response(proc.stdout).text();
-    if ((await proc.exited) !== 0) return null;
-    return out.match(/CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})/)?.[1] ?? null;
-  } catch {
-    return null;
-  }
+  if (!ref.workspace) return NO_SURFACE;
+  return run(['workspace', 'select', `--workspace=${ref.workspace}`]);
 }
 
 // ── event stream (long-lived subprocess with backoff restart) ───────────

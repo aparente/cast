@@ -62,18 +62,16 @@ export function DetailOverlay({
       <Text dimColor>{rule}</Text>
       {tail.length === 0 ? <Text dimColor> no transcript found</Text> : null}
       {tail.map((t, i) => (
-        <Box key={i}>
+        <Text key={i} wrap="truncate-end">
           {t.role === 'user' ? (
-            <Text bold> me› </Text>
+            <Text bold>{' me› '}</Text>
           ) : t.role === 'assistant' ? (
-            <Text dimColor> cl› </Text>
+            <Text dimColor>{' cl› '}</Text>
           ) : (
             <Text dimColor>{`  ${TOOL_MARK}  `}</Text>
           )}
-          <Text dimColor={t.role === 'tool'} wrap="truncate-end">
-            {t.text}
-          </Text>
-        </Box>
+          <Text dimColor={t.role === 'tool'}>{t.text}</Text>
+        </Text>
       ))}
       {s.detail?.todos ? (
         <Text dimColor>
@@ -89,7 +87,7 @@ export function DetailOverlay({
         {composerFocus ? (
           <TextInput value={draft} onChange={onDraft} onSubmit={onSubmit} />
         ) : (
-          <Text dimColor>{s.surface?.surface ? 'm to message' : 'view-only · not in cmux'}</Text>
+          <Text dimColor>{s.surface?.workspace ? 'm to message' : 'view-only · not in cmux'}</Text>
         )}
       </Box>
     </Box>

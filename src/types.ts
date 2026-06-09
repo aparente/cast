@@ -50,13 +50,12 @@ export interface TranscriptDetail {
 }
 
 /**
- * Where the session lives in cmux. `surface` is the terminal surface id
- * (send/send-key/read-screen); `tab` is the tab id (focus, notifications).
- * Both null ⇒ view-only row.
+ * Where the session lives in cmux: its workspace id (UUID or `workspace:N`
+ * ref — both accepted by `--workspace=`). Used for send/read-screen/select.
+ * null workspace ⇒ view-only row.
  */
 export interface SurfaceRef {
-  surface: string | null;
-  tab: string | null;
+  workspace: string | null;
 }
 
 export interface Session {

@@ -89,9 +89,9 @@ describe('CastStore alert lifecycle', () => {
   test('Notification hook sets alert; other hook clears it', () => {
     const store = makeStore();
     store.refreshSessions();
-    store.applyEvent({ kind: 'hook', hook: 'Notification', sessionId: 'sid-1', cwd: '/Users/x/proj' });
+    store.applyEvent({ kind: 'hook', hook: 'Notification', sessionId: 'sid-1', cwd: '/Users/x/proj', workspace: ''  });
     expect(store.snapshot().needsYou).toHaveLength(1);
-    store.applyEvent({ kind: 'hook', hook: 'PostToolUse', sessionId: 'sid-1', cwd: '/Users/x/proj' });
+    store.applyEvent({ kind: 'hook', hook: 'PostToolUse', sessionId: 'sid-1', cwd: '/Users/x/proj', workspace: ''  });
     expect(store.snapshot().needsYou).toHaveLength(0);
   });
 
@@ -99,22 +99,32 @@ describe('CastStore alert lifecycle', () => {
     const healed = detail({ tail: [{ role: 'assistant', text: 'done', ts: 20_000 }] });
     const store = makeStore(healed);
     store.refreshSessions();
-    store.applyEvent({ kind: 'hook', hook: 'Notification', sessionId: 'sid-1', cwd: '/Users/x/proj' });
+    store.applyEvent({ kind: 'hook', hook: 'Notification', sessionId: 'sid-1', cwd: '/Users/x/proj', workspace: ''  });
     // applyEvent already refreshed detail; activity ts 20000 > alert 10000, no pending
     expect(store.snapshot().needsYou).toHaveLength(0);
   });
 
-  test('status event maps pid→surface and notification seeding uses it', () => {
+  test('status event maps pid→workspace and notification seeding uses it', () => {
     const store = makeStore();
     store.refreshSessions();
-    store.applyEvent({ kind: 'status', pid: 1, tab: 'TAB-1', panel: 'SURF-1', running: false });
+    store.applyEvent({ kind: 'status', pid: 1, workspace: 'WS-1', running: false });
     store.seedNotifications([
-      { tab: 'TAB-1', title: 'Test', body: 'Claude needs your permission', at: 9000, read: false },
-      { tab: 'TAB-1', title: 'Test', body: 'Claude is waiting for your input', at: 8000, read: true },
+      { workspace: 'WS-1', title: 'Test', body: 'Claude needs your permission', at: 9000, read: false },
+      { workspace: 'WS-1', title: 'Test', body: 'Claude is waiting for your input', at: 8000, read: true },
     ]);
     const snap = store.snapshot();
     expect(snap.needsYou).toHaveLength(1);
     expect(snap.needsYou[0]!.alertSince).toBe(9000);
-    expect(snap.needsYou[0]!.surface).toEqual({ surface: 'SURF-1', tab: 'TAB-1' });
+    expect(snap.needsYou[0]!.surface).toEqual({ workspace: 'WS-1' });
+  });
+
+  test('hook event carries workspace and seedWorkspaces fills gaps', () => {
+    const store = makeStore();
+    store.refreshSessions();
+    store.applyEvent({
+      kind: 'hook', hook: 'PostToolUse', sessionId: 'sid-1', cwd: '/Users/x/proj', workspace: 'WS-HOOK',
+    });
+    expect(store.snapshot().groups[0]!.sessions[0]!.surface).toEqual({ workspace: 'WS-HOOK' });
+    expect(store.unmappedPids()).toEqual([]);
   });
 });
