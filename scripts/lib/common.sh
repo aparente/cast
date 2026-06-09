@@ -230,18 +230,11 @@ get_last_assistant_message() {
   fi
 
   # Get last assistant message that has text content (not just tool_use)
-  # Read file backwards (tac) and find first assistant message with text
+  # Single pipeline: reverse file, stream through jq, take first match
   local last_msg=""
-  while IFS= read -r line; do
-    if echo "$line" | grep -q '"type":"assistant"'; then
-      local text
-      text=$(echo "$line" | jq -r '.message.content[] | select(.type=="text") | .text' 2>/dev/null | head -1)
-      if [ -n "$text" ]; then
-        last_msg=$(echo "$text" | head -c 100 | tr '\n' ' ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-        break
-      fi
-    fi
-  done < <(tail -r "$transcript_path" 2>/dev/null)
+  last_msg=$(tail -r "$transcript_path" 2>/dev/null | \
+    jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' 2>/dev/null | \
+    head -1 | head -c 100 | tr '\n' ' ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 
   # Truncate at sentence boundary if possible
   if [ ${#last_msg} -gt 50 ]; then

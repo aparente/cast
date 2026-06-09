@@ -107,7 +107,7 @@ describe('CastStore alert lifecycle', () => {
   test('status event maps pid→surface and notification seeding uses it', () => {
     const store = makeStore();
     store.refreshSessions();
-    store.applyEvent({ kind: 'status', pid: 1, tab: 'TAB-1', panel: null, running: false });
+    store.applyEvent({ kind: 'status', pid: 1, tab: 'TAB-1', panel: 'SURF-1', running: false });
     store.seedNotifications([
       { tab: 'TAB-1', title: 'Test', body: 'Claude needs your permission', at: 9000, read: false },
       { tab: 'TAB-1', title: 'Test', body: 'Claude is waiting for your input', at: 8000, read: true },
@@ -115,6 +115,6 @@ describe('CastStore alert lifecycle', () => {
     const snap = store.snapshot();
     expect(snap.needsYou).toHaveLength(1);
     expect(snap.needsYou[0].alertSince).toBe(9000);
-    expect(snap.needsYou[0].surface).toEqual({ tab: 'TAB-1', panel: null });
+    expect(snap.needsYou[0].surface).toEqual({ surface: 'SURF-1', tab: 'TAB-1' });
   });
 });

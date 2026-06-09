@@ -49,10 +49,14 @@ export interface TranscriptDetail {
   customTitle: string | null;
 }
 
-/** cmux tab/panel the session lives in. null surface ⇒ view-only row. */
+/**
+ * Where the session lives in cmux. `surface` is the terminal surface id
+ * (send/send-key/read-screen); `tab` is the tab id (focus, notifications).
+ * Both null ⇒ view-only row.
+ */
 export interface SurfaceRef {
-  tab: string;
-  panel: string | null;
+  surface: string | null;
+  tab: string | null;
 }
 
 export interface Session {

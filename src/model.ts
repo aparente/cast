@@ -181,7 +181,9 @@ export class CastStore {
       this.refreshDetail(e.sessionId);
       this.notify();
     } else if (e.kind === 'status') {
-      this.surfaces.set(e.pid, { tab: e.tab, panel: e.panel });
+      // set_status --panel is the terminal surface; --tab is the tab.
+      const prev = this.surfaces.get(e.pid);
+      this.surfaces.set(e.pid, { surface: e.panel ?? prev?.surface ?? null, tab: e.tab });
       this.tabToPid.set(e.tab, e.pid);
       this.notify();
     } else if (e.kind === 'notif_clear') {
@@ -203,9 +205,17 @@ export class CastStore {
   }
 
   /** Map surfaces for sessions cmux hasn't announced since we started. */
-  seedSurface(pid: number, surface: SurfaceRef): void {
-    this.surfaces.set(pid, surface);
-    this.tabToPid.set(surface.tab, pid);
+  seedSurface(pid: number, ref: SurfaceRef): void {
+    const prev = this.surfaces.get(pid);
+    this.surfaces.set(pid, {
+      surface: ref.surface ?? prev?.surface ?? null,
+      tab: ref.tab ?? prev?.tab ?? null,
+    });
+    if (ref.tab) this.tabToPid.set(ref.tab, pid);
+  }
+
+  hasSurface(pid: number): boolean {
+    return this.surfaces.get(pid)?.surface != null;
   }
 
   snapshotAll(): Session[] {

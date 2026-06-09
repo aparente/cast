@@ -121,27 +121,42 @@ export async function listNotifications(): Promise<CmuxNotification[]> {
   return r.stdout.split('\n').map(parseNotificationLine).filter((n): n is CmuxNotification => n !== null);
 }
 
-export async function readScreen(surface: SurfaceRef): Promise<string | null> {
-  const r = await run(['read-screen', `--surface=${surface.tab}`]);
+const NO_SURFACE: RunResult = { ok: false, error: 'no terminal surface for session' };
+
+export async function readScreen(ref: SurfaceRef): Promise<string | null> {
+  if (!ref.surface) return null;
+  const r = await run(['read-screen', `--surface=${ref.surface}`]);
   return r.ok ? r.stdout : null;
 }
 
-export async function send(surface: SurfaceRef, text: string): Promise<RunResult> {
-  const sent = await run(['send', `--surface=${surface.tab}`, text]);
+export async function send(ref: SurfaceRef, text: string): Promise<RunResult> {
+  if (!ref.surface) return NO_SURFACE;
+  const sent = await run(['send', `--surface=${ref.surface}`, text]);
   if (!sent.ok) return sent;
-  return run(['send-key', `--surface=${surface.tab}`, 'Enter']);
+  return run(['send-key', `--surface=${ref.surface}`, 'Enter']);
 }
 
-export async function sendKey(surface: SurfaceRef, key: string): Promise<RunResult> {
-  return run(['send-key', `--surface=${surface.tab}`, key]);
+export async function sendKey(ref: SurfaceRef, key: string): Promise<RunResult> {
+  if (!ref.surface) return NO_SURFACE;
+  return run(['send-key', `--surface=${ref.surface}`, key]);
 }
 
-export async function focusTab(surface: SurfaceRef): Promise<RunResult> {
-  return run(['tab-action', '--action=focus', `--tab=${surface.tab}`]);
+export async function focusTab(ref: SurfaceRef): Promise<RunResult> {
+  if (ref.tab) return run(['tab-action', '--action=focus', `--tab=${ref.tab}`]);
+  if (ref.surface) return run(['tab-action', '--action=focus', `--surface=${ref.surface}`]);
+  return NO_SURFACE;
 }
 
-export async function markRead(surface: SurfaceRef): Promise<RunResult> {
-  return run(['mark-notification-read', `--surface=${surface.tab}`]);
+/** Read CMUX_SURFACE_ID from a process's environment (macOS `ps -wwE`). */
+export async function surfaceFromEnv(pid: number): Promise<string | null> {
+  try {
+    const proc = Bun.spawn(['ps', '-p', String(pid), '-wwE', '-o', 'command='], { stdout: 'pipe' });
+    const out = await new Response(proc.stdout).text();
+    if ((await proc.exited) !== 0) return null;
+    return out.match(/CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── event stream (long-lived subprocess with backoff restart) ───────────
