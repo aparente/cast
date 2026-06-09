@@ -66,14 +66,14 @@ describe('sortSessions', () => {
     const grouped = sortSessions(buildSessions([a, b, c, d], alerts, new Map(), new Map()));
     expect(grouped.needsYou.map((s) => s.info.sessionId)).toEqual(['d', 'c']);
     expect(grouped.groups).toHaveLength(1);
-    expect(grouped.groups[0].sessions.map((s) => s.info.sessionId)).toEqual(['b', 'a']);
+    expect(grouped.groups[0]!.sessions.map((s) => s.info.sessionId)).toEqual(['b', 'a']);
     expect(grouped.counts).toEqual({ needsYou: 2, busy: 1, idle: 1, total: 4 });
   });
 
   test('groups ordered by most recent activity', () => {
     const grouped = sortSessions(buildSessions([a, b, c, d], new Map(), new Map(), new Map()));
     expect(grouped.groups.map((g) => g.dir)).toEqual(['/p/two', '/p/one']);
-    expect(grouped.groups[0].label).toBe('TWO');
+    expect(grouped.groups[0]!.label).toBe('TWO');
   });
 });
 
@@ -114,7 +114,7 @@ describe('CastStore alert lifecycle', () => {
     ]);
     const snap = store.snapshot();
     expect(snap.needsYou).toHaveLength(1);
-    expect(snap.needsYou[0].alertSince).toBe(9000);
-    expect(snap.needsYou[0].surface).toEqual({ surface: 'SURF-1', tab: 'TAB-1' });
+    expect(snap.needsYou[0]!.alertSince).toBe(9000);
+    expect(snap.needsYou[0]!.surface).toEqual({ surface: 'SURF-1', tab: 'TAB-1' });
   });
 });

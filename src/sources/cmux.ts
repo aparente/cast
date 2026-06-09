@@ -72,7 +72,7 @@ export interface CmuxNotification {
 export function parseNotificationLine(line: string): CmuxNotification | null {
   const m = line.match(/^\d+:(.*)$/);
   if (!m) return null;
-  const parts = m[1].split('|');
+  const parts = m[1]!.split('|');
   if (parts.length < 8) return null;
   const [, , tab, readState, title, , body, iso] = parts;
   if (!tab) return null;
@@ -194,7 +194,7 @@ export function streamEvents(
         for (const line of lines) {
           if (!line.trim()) continue;
           const e = parseEventLine(line);
-          if (e && e.kind !== 'other') onEvent(e);
+          if (e) onEvent(e); // 'other' included — consumers no-op on it
         }
       }
     } catch {

@@ -13,10 +13,10 @@ const eventLines = (await Bun.file(join(import.meta.dir, 'fixtures/cmux-events.n
 
 describe('parseEventLine', () => {
   test('ack line → null', () => {
-    expect(parseEventLine(eventLines[0])).toBeNull();
+    expect(parseEventLine(eventLines[0]!)).toBeNull();
   });
   test('Notification hook (phase received) → hook event, claude- prefix stripped', () => {
-    const e = parseEventLine(eventLines[1]);
+    const e = parseEventLine(eventLines[1]!);
     expect(e).toEqual({
       kind: 'hook',
       hook: 'Notification',
@@ -25,10 +25,10 @@ describe('parseEventLine', () => {
     });
   });
   test('phase completed → other (not double-counted)', () => {
-    expect(parseEventLine(eventLines[2])).toEqual({ kind: 'other' });
+    expect(parseEventLine(eventLines[2]!)).toEqual({ kind: 'other' });
   });
   test('set_status → pid/tab/panel/running mapping', () => {
-    const e = parseEventLine(eventLines[3]);
+    const e = parseEventLine(eventLines[3]!);
     expect(e).toEqual({
       kind: 'status',
       pid: 54662,
@@ -38,10 +38,10 @@ describe('parseEventLine', () => {
     });
   });
   test('notification.clear_requested → notif_clear', () => {
-    expect(parseEventLine(eventLines[4])).toEqual({ kind: 'notif_clear' });
+    expect(parseEventLine(eventLines[4]!)).toEqual({ kind: 'notif_clear' });
   });
   test('unrelated event → other; junk → null', () => {
-    expect(parseEventLine(eventLines[5])).toEqual({ kind: 'other' });
+    expect(parseEventLine(eventLines[5]!)).toEqual({ kind: 'other' });
     expect(parseEventLine('garbage')).toBeNull();
   });
 });

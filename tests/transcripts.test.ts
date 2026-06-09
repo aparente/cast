@@ -26,8 +26,8 @@ describe('parseTranscript', () => {
   test('tail has user, assistant, and tool turns in order; skips sidechain + junk', () => {
     const roles = d.tail.map((t) => t.role);
     expect(roles).toEqual(['user', 'assistant', 'tool', 'tool', 'tool', 'tool']);
-    expect(d.tail[0].text).toContain('retag the regen-med notes');
-    expect(d.tail[2].text).toBe("Bash · grep -c 'regen-med' notes/**/*.md");
+    expect(d.tail[0]!.text).toContain('retag the regen-med notes');
+    expect(d.tail[2]!.text).toBe("Bash · grep -c 'regen-med' notes/**/*.md");
     expect(d.tail.some((t) => t.text.includes('sidechain'))).toBe(false);
   });
 
@@ -39,8 +39,8 @@ describe('parseTranscript', () => {
 
   test('running Task is a subagent, not a pending request', () => {
     expect(d.subagents).toHaveLength(1);
-    expect(d.subagents[0].label).toBe('verify 40 tagged notes');
-    expect(d.subagents[0].status).toBe('running');
+    expect(d.subagents[0]!.label).toBe('verify 40 tagged notes');
+    expect(d.subagents[0]!.status).toBe('running');
     expect(d.pending!.tool).not.toBe('Task');
   });
 
@@ -62,7 +62,7 @@ describe('parseTranscript', () => {
         timestamp: '2026-06-09T10:05:01.000Z',
       }),
     ]);
-    expect(resolved.subagents[0].status).toBe('done');
+    expect(resolved.subagents[0]!.status).toBe('done');
     expect(resolved.pending).toBeNull();
   });
 

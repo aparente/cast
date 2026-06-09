@@ -1,203 +1,139 @@
 #!/usr/bin/env bun
-import { program } from 'commander';
-import { render } from 'ink';
+// cast — machine-wide Claude Code session dashboard.
+//   cast          interactive TUI (default)
+//   cast list     plain TSV for scripting
+//   cast doctor   check the three data sources
+
+import { Command } from 'commander';
 import React from 'react';
-import { Dashboard } from './components/Dashboard.js';
-import { startServer, DEFAULT_PORT } from './server.js';
-import { sessionStore } from './store.js';
+import { render } from 'ink';
+import { CastStore } from './model';
+import { readSessions, readStale, watchSessions, SESSIONS_DIR } from './sources/sessions';
+import { readDetail, transcriptPath } from './sources/transcripts';
+import * as cmux from './sources/cmux';
+import { App } from './ui/App';
+import { formatAge } from './theme';
+import type { Session } from './types';
 
-program
-  .name('csm')
-  .description('Cast - Terminal UI for managing your cast of Claude Code sessions')
-  .version('0.1.0');
+function buildStore(): CastStore {
+  return new CastStore({ readSessions, readDetail });
+}
 
-program
-  .command('dashboard', { isDefault: true })
-  .description('Launch the session dashboard (starts server automatically)')
-  .option('-v, --view <mode>', 'View mode: list, kanban', 'list')
-  .option('-p, --port <port>', 'Server port', String(DEFAULT_PORT))
-  .action((options) => {
-    const port = parseInt(options.port, 10);
+async function seedSurfaces(store: CastStore): Promise<void> {
+  // cmux only announces pid→surface on status changes; for sessions that
+  // predate us, read CMUX_SURFACE_ID from each process's environment.
+  await Promise.all(
+    readSessions().map(async (info) => {
+      if (store.hasSurface(info.pid)) return;
+      const surface = await cmux.surfaceFromEnv(info.pid);
+      if (surface) store.seedSurface(info.pid, { surface, tab: null });
+    }),
+  );
+}
 
-    // Start the server to receive hook events
-    const server = startServer(port);
+async function tui(): Promise<void> {
+  const store = buildStore();
+  store.refreshSessions();
+  const unwatch = watchSessions(() => store.refreshSessions());
+  const stream = cmux.streamEvents(
+    (e) => store.applyEvent(e),
+    (up) => store.setCmuxUp(up),
+  );
 
-    // Render the dashboard
-    const { unmount } = render(
-      React.createElement(Dashboard, {
-        viewMode: options.view,
-        serverPort: server.port,
-      })
+  await seedSurfaces(store);
+  store.seedNotifications(await cmux.listNotifications());
+  store.refreshHotDetails();
+
+  const actionDeps = {
+    readScreen: cmux.readScreen,
+    send: cmux.send,
+    sendKey: cmux.sendKey,
+    focusTab: cmux.focusTab,
+  };
+
+  const staleSessions = (): Session[] =>
+    readStale().map((info) => ({
+      info,
+      row: 'stale' as const,
+      alertSince: null,
+      detail: null,
+      surface: null,
+    }));
+
+  const { waitUntilExit } = render(
+    React.createElement(App, { store, actionDeps, readStale: staleSessions }),
+    { exitOnCtrlC: true },
+  );
+  await waitUntilExit();
+  stream.stop();
+  unwatch();
+  process.exit(0);
+}
+
+function list(): void {
+  const now = Date.now();
+  for (const s of readSessions()) {
+    console.log(
+      [s.pid, s.sessionId, s.status, formatAge(now - s.updatedAt), s.name ?? '-', s.cwd].join('\t'),
     );
-
-    // Cleanup on exit
-    process.on('SIGINT', () => {
-      server.stop();
-      unmount();
-      process.exit(0);
-    });
-  });
-
-program
-  .command('server')
-  .description('Run only the hook event server (headless)')
-  .option('-p, --port <port>', 'Server port', String(DEFAULT_PORT))
-  .action((options) => {
-    const port = parseInt(options.port, 10);
-    const server = startServer(port);
-
-    console.log('Press Ctrl+C to stop');
-
-    process.on('SIGINT', () => {
-      server.stop();
-      process.exit(0);
-    });
-  });
-
-program
-  .command('list')
-  .description('List all active Claude Code sessions')
-  .option('-p, --port <port>', 'Server port', String(DEFAULT_PORT))
-  .action(async (options) => {
-    try {
-      const res = await fetch(`http://localhost:${options.port}/sessions`);
-      const sessions = await res.json() as Array<{ name: string; status: string; alerting: boolean; currentTask?: string }>;
-
-      if (sessions.length === 0) {
-        console.log('No active sessions');
-        return;
-      }
-
-      console.log(`\n${sessions.length} active session(s):\n`);
-      for (const s of sessions) {
-        const alert = s.alerting ? ' [ALERT]' : '';
-        console.log(`  ${s.name} (${s.status})${alert}`);
-        if (s.currentTask) console.log(`    └─ ${s.currentTask}`);
-      }
-      console.log();
-    } catch {
-      console.error('Dashboard server not running. Start with: csm dashboard');
-    }
-  });
-
-program
-  .command('clear')
-  .description('Clear all sessions from the database')
-  .action(() => {
-    const count = sessionStore.all().length;
-    for (const session of sessionStore.all()) {
-      sessionStore.remove(session.id);
-    }
-    console.log(`Cleared ${count} session(s)`);
-  });
-
-program
-  .command('prune')
-  .description('Remove stale sessions older than N minutes')
-  .option('-m, --minutes <minutes>', 'Minutes threshold', '60')
-  .action((options) => {
-    const minutes = parseInt(options.minutes, 10);
-    const count = sessionStore.pruneStale(minutes);
-    console.log(`Pruned ${count} stale session(s) older than ${minutes} minutes`);
-  });
-
-program
-  .command('install-hooks')
-  .description('Show instructions for installing hooks')
-  .action(() => {
-    const scriptsPath = new URL('../scripts', import.meta.url).pathname;
-
-    console.log(`
-Cast - Hook Installation
-==========================================
-
-Add the following to your ~/.claude/settings.json:
-
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/session-start.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/session-end.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/notification.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/tool-use.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/user-prompt.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/subagent-stop.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${scriptsPath}/stop.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
   }
 }
 
-After updating, restart your Claude Code sessions for hooks to take effect.
-`);
-  });
+async function doctor(): Promise<void> {
+  let failed = false;
+  const check = (ok: boolean, label: string, detail = '') => {
+    console.log(`${ok ? '✓' : '✗'} ${label}${detail ? ` — ${detail}` : ''}`);
+    if (!ok) failed = true;
+  };
 
+  const sessions = readSessions();
+  check(sessions.length > 0, 'session files', `${sessions.length} live sessions in ${SESSIONS_DIR}`);
+
+  const withTranscript = sessions.filter((s) => readDetail(s.cwd, s.sessionId) !== null);
+  check(
+    sessions.length === 0 || withTranscript.length > 0,
+    'transcripts',
+    sessions.length > 0
+      ? `${withTranscript.length}/${sessions.length} resolvable (e.g. ${transcriptPath(sessions[0]!.cwd, sessions[0]!.sessionId)})`
+      : 'no sessions to check',
+  );
+
+  const pingOk = await cmux.ping();
+  check(pingOk, 'cmux socket', pingOk ? 'ping ok' : 'cmux unreachable — actions disabled');
+
+  if (pingOk) {
+    // Probe: emit a log event through cmux and confirm it comes back on the stream.
+    const gotEvent = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        stream.stop();
+        resolve(false);
+      }, 3000);
+      const stream = cmux.streamEvents(
+        () => {
+          clearTimeout(timer);
+          stream.stop();
+          resolve(true);
+        },
+        (up) => {
+          if (up) Bun.spawn(['cmux', 'log', '--source', 'cast-doctor', 'probe'], { stdout: 'ignore', stderr: 'ignore' });
+        },
+      );
+    });
+    check(gotEvent, 'event stream', gotEvent ? 'probe event received' : 'no events within 3s');
+
+    const surfaced = (
+      await Promise.all(sessions.slice(0, 10).map((s) => cmux.surfaceFromEnv(s.pid)))
+    ).filter(Boolean).length;
+    check(surfaced > 0 || sessions.length === 0, 'surface mapping', `${surfaced}/${Math.min(10, sessions.length)} sampled sessions mapped`);
+  }
+
+  process.exit(failed ? 1 : 0);
+}
+
+const program = new Command()
+  .name('cast')
+  .description('Machine-wide Claude Code session dashboard');
+program.command('list').description('print live sessions as TSV').action(list);
+program.command('doctor').description('check data sources').action(doctor);
+program.action(tui);
 program.parse();
