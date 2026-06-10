@@ -1,138 +1,69 @@
-/**
- * Represents the status of a Claude Code session
- */
-export type SessionStatus =
-  | 'idle'           // Waiting, no active work
-  | 'working'        // Claude is processing/generating
-  | 'needs_input'    // Waiting for user input/approval
-  | 'error'          // Something went wrong
-  | 'completed';     // Task finished
+// Core model types for cast — see docs/superpowers/specs/2026-06-09-cast-rebuild-design.md
 
-/**
- * Terminal types we can send input to
- */
-export type TerminalType = 'tmux' | 'vscode' | 'iterm2' | 'unknown';
+export type CoarseStatus = 'idle' | 'busy';
+export type RowStatus = 'needs_you' | 'busy' | 'idle' | 'stale';
 
-/**
- * Terminal context for quick actions
- */
-export interface TerminalContext {
-  type: TerminalType;
-  id: string;           // tmux pane target, iTerm session ID, etc.
-  shellPid?: number;    // Shell process ID
-  ttyPath?: string;     // TTY device path
+/** Parsed from ~/.claude/sessions/<pid>.json — written by Claude Code itself. */
+export interface SessionInfo {
+  pid: number;
+  sessionId: string;
+  name: string | null; // custom /name title
+  cwd: string;
+  status: CoarseStatus;
+  startedAt: number;
+  updatedAt: number;
+  kind: string; // 'interactive' etc.
+}
+
+export interface PendingRequest {
+  tool: string;
+  summary: string;
+  since: number;
+}
+
+export interface Turn {
+  role: 'user' | 'assistant' | 'tool';
+  text: string;
+  ts: number;
+}
+
+export interface Todos {
+  done: number;
+  total: number;
+  current: string | null;
+}
+
+export interface Subagent {
+  agentId: string;
+  label: string;
+  status: 'running' | 'done' | 'needs_you';
+  updatedAt: number;
+}
+
+/** Lazily parsed from the session's transcript JSONL tail. */
+export interface TranscriptDetail {
+  tail: Turn[];
+  pending: PendingRequest | null;
+  todos: Todos | null;
+  subagents: Subagent[];
+  customTitle: string | null;
 }
 
 /**
- * Quick action types
+ * Where the session lives in cmux: its workspace id (UUID or `workspace:N`
+ * ref — both accepted by `--workspace=`). Used for send/read-screen/select.
+ * null workspace ⇒ view-only row.
  */
-export type QuickActionType = 'approve' | 'deny' | 'respond' | 'cancel' | 'focus';
-
-/**
- * Attention type for distinguishing critical vs casual input requests
- */
-export type AttentionType = 'critical' | 'casual' | null;
-
-/**
- * Todo item status
- */
-export type TodoStatus = 'pending' | 'in_progress' | 'completed';
-
-/**
- * A todo item from Claude's TodoWrite tool
- */
-export interface TodoItem {
-  content: string;      // Task description (imperative form)
-  activeForm: string;   // Present continuous form (e.g., "Writing tests")
-  status: TodoStatus;
+export interface SurfaceRef {
+  workspace: string | null;
 }
 
-/**
- * Plan step extracted from a plan file
- */
-export interface PlanStep {
-  title: string;
-  completed: boolean;
+export interface Session {
+  info: SessionInfo;
+  row: RowStatus;
+  alertSince: number | null;
+  detail: TranscriptDetail | null;
+  surface: SurfaceRef | null;
 }
 
-/**
- * Plan context for a session
- */
-export interface PlanContext {
-  name: string;           // Plan name (from filename or heading)
-  steps: PlanStep[];      // Extracted steps
-  currentStep?: number;   // 0-indexed current step
-  filePath?: string;      // Path to plan file
-}
-
-/**
- * A Claude Code session running in a terminal
- */
-export interface ClaudeSession {
-  id: string;
-  name: string;
-  status: SessionStatus;
-  projectPath?: string;
-  currentTask?: string;
-  pendingMessage?: string;  // What Claude is asking/waiting for
-  lastActivity: Date;
-  alerting: boolean;
-  attentionType?: AttentionType;  // Critical (permission) vs casual (question)
-  terminal: TerminalContext;
-  // Subagent hierarchy
-  parentId?: string;        // If this is a subagent, the parent session ID
-  // Task tracking from TodoWrite
-  todos?: TodoItem[];       // Current todo list
-  lastStatus?: string;      // Parsed status from last Claude message
-  // Plan tracking
-  plan?: PlanContext;       // Active plan context
-}
-
-/**
- * Aggregated status for a session including its children
- */
-export interface AggregatedStatus {
-  status: SessionStatus;
-  alerting: boolean;
-  childCount: number;
-  alertingChildCount: number;
-}
-
-/**
- * Dashboard view modes
- */
-export type ViewMode = 'list' | 'kanban' | 'detail';
-
-/**
- * Kanban columns for session organization
- */
-export interface KanbanColumn {
-  id: string;
-  title: string;
-  statuses: SessionStatus[];
-}
-
-export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
-  { id: 'waiting', title: 'Needs Input', statuses: ['needs_input'] },
-  { id: 'working', title: 'Working', statuses: ['working'] },
-  { id: 'idle', title: 'Idle', statuses: ['idle', 'completed'] },
-];
-
-/**
- * Status priority for sorting and bubbling (lower = higher priority)
- * Centralized to avoid duplication across files
- */
-export const STATUS_PRIORITY: Record<SessionStatus, number> = {
-  needs_input: 0,
-  error: 1,
-  working: 2,
-  idle: 3,
-  completed: 4,
-};
-
-/**
- * Check if quick actions are available for a session
- */
-export function canSendInput(session: ClaudeSession): boolean {
-  return session.terminal.type === 'tmux' && session.terminal.id !== '';
-}
+export type ActionResult = { ok: true } | { ok: false; reason: string };
