@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseSessionFile, readSessions, readStale } from '../src/sources/sessions';
+import { dedupeBySession, parseSessionFile, readSessions, readStale } from '../src/sources/sessions';
+import type { SessionInfo } from '../src/types';
 
 const fixture = await Bun.file(join(import.meta.dir, 'fixtures/session-12000.json')).text();
 
@@ -49,5 +50,18 @@ describe('readSessions / readStale', () => {
   });
   test('missing dir → empty, no throw', () => {
     expect(readSessions('/nonexistent/dir')).toEqual([]);
+  });
+});
+
+describe('dedupeBySession', () => {
+  const mk = (pid: number, sessionId: string, updatedAt: number): SessionInfo => ({
+    pid, sessionId, name: 'x', cwd: '/p', status: 'idle', startedAt: 0, updatedAt, kind: 'interactive',
+  });
+
+  test('collapses multiple PID files of one session, keeping newest PID', () => {
+    const out = dedupeBySession([mk(1, 'A', 100), mk(2, 'A', 300), mk(3, 'B', 50), mk(4, 'A', 200)]);
+    expect(out).toHaveLength(2);
+    const a = out.find((s) => s.sessionId === 'A')!;
+    expect(a.pid).toBe(2); // updatedAt 300 wins
   });
 });

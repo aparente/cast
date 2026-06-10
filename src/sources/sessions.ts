@@ -59,9 +59,21 @@ function readAll(dir: string): SessionInfo[] {
   return out;
 }
 
-/** Live sessions only (PID responds to signal 0). */
+/** One session can spawn several processes, each writing its own PID file
+ *  under the same sessionId. Collapse to one entry per sessionId, keeping the
+ *  most recently updated live PID. */
+export function dedupeBySession(infos: SessionInfo[]): SessionInfo[] {
+  const best = new Map<string, SessionInfo>();
+  for (const s of infos) {
+    const prev = best.get(s.sessionId);
+    if (!prev || s.updatedAt > prev.updatedAt) best.set(s.sessionId, s);
+  }
+  return [...best.values()];
+}
+
+/** Live sessions only (PID responds to signal 0), one row per sessionId. */
 export function readSessions(dir = SESSIONS_DIR, isAlive = pidAlive): SessionInfo[] {
-  return readAll(dir).filter((s) => isAlive(s.pid));
+  return dedupeBySession(readAll(dir).filter((s) => isAlive(s.pid)));
 }
 
 /** Lingering session files whose process is gone — the `.` toggle. */
